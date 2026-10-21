@@ -26,7 +26,7 @@ Totori 是一个常驻菜单栏的 macOS 本地文件转换工具。森林绿、
 
 ## 安装到另一台 Mac
 
-1. 登录有权访问本私有仓库的 GitHub 账号，打开 [Releases](https://github.com/gzsteven666/Totori/releases/latest)。
+1. 打开 [Releases](https://github.com/gzsteven666/Totori/releases/latest)。
 2. 下载 **`Totori-0.3.8-macOS-arm64.zip`**。GitHub 自动生成的“Source code”是源码，不是安装包。
 3. 解压，将 **Totori.app** 拖到“应用程序”，再打开。
 4. 首次使用按应用提示开启辅助功能权限；使用读取访达选中项的功能时，允许对访达的自动化访问。

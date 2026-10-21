@@ -1,6 +1,6 @@
 # 在另一台 M 系列 Mac 安装 Totori
 
-1. 登录能访问私有仓库的 GitHub 账号，打开 https://github.com/gzsteven666/Totori/releases/latest 。
+1. 打开 https://github.com/gzsteven666/Totori/releases/latest 。
 2. 下载 `Totori-0.3.8-macOS-arm64.zip`，双击解压。不要下载自动生成的 Source code 作为安装包。
 3. 将解压目录中的 `Totori.app` 拖入“应用程序”，再启动；保留 App 内部文件的原始结构。
 4. 首次使用按引导开启辅助功能权限；需要读取访达选中项时，允许 Totori 控制访达。
