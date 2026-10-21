@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>architecture</key>
+	<string>arm64</string>
+	<key>bundled</key>
+	<true/>
+	<key>libreOfficeVersion</key>
+	<string>26.8.1</string>
+	<key>minimumSystemVersion</key>
+	<string>13.0</string>
+	<key>requiresHomebrew</key>
+	<false/>
+	<key>tools</key>
+	<array>
+		<string>ffmpeg</string>
+		<string>ffprobe</string>
+		<string>cwebp</string>
+		<string>soffice</string>
+	</array>
+</dict>
+</plist>

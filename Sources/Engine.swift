@@ -1,0 +1,682 @@
+import Foundation
+import CoreGraphics
+import CoreImage
+import ImageIO
+import UniformTypeIdentifiers
+import Darwin
+
+// MARK: - 错误
+
+enum ConversionError: LocalizedError {
+    case unsupported(String)
+    case toolMissing(String)
+    case failed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupported(let m): return m
+        case .toolMissing(let m): return m
+        case .failed(let m):      return m
+        }
+    }
+}
+
+// MARK: - 子进程
+
+enum Shell {
+    /// Process 的启动、停止与收尾共用一把锁；定时回调不会作用于后续任务。
+    private final class ProcessControl: @unchecked Sendable {
+        let process: Process
+        private let lock = NSLock()
+        private var started = false
+        private var finished = false
+        private var cancelled = false
+        private var didTimeOut = false
+        private var timeoutWork: DispatchWorkItem?
+        private var killWork: DispatchWorkItem?
+
+        init(_ process: Process) { self.process = process }
+
+        func start() throws {
+            lock.lock()
+            defer { lock.unlock() }
+            if cancelled { throw CancellationError() }
+            try process.run()
+            started = true
+        }
+
+        func cancel() { stop(isTimeout: false) }
+
+        func scheduleTimeout(_ interval: TimeInterval) {
+            guard interval > 0 else { return }
+            let work = DispatchWorkItem { [weak self] in self?.stop(isTimeout: true) }
+            lock.lock()
+            guard !finished else { lock.unlock(); return }
+            timeoutWork = work
+            lock.unlock()
+            DispatchQueue.global().asyncAfter(deadline: .now() + interval, execute: work)
+        }
+
+        private func stop(isTimeout: Bool) {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !finished else { return }
+            if isTimeout {
+                guard started, process.isRunning else { return }
+                didTimeOut = true
+            } else {
+                cancelled = true
+            }
+            guard started, process.isRunning, killWork == nil else { return }
+            process.terminate()
+            let work = DispatchWorkItem { [weak self] in self?.forceStop() }
+            killWork = work
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.4, execute: work)
+        }
+
+        private func forceStop() {
+            lock.lock()
+            defer { lock.unlock() }
+            guard started, !finished, process.isRunning else { return }
+            // 只回收这一只 Process，绝不按名称或进程组终止其他任务。
+            _ = Darwin.kill(process.processIdentifier, SIGKILL)
+        }
+
+        func finish() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            finished = true
+            timeoutWork?.cancel()
+            killWork?.cancel()
+            return didTimeOut
+        }
+    }
+
+    /// 分发版优先使用包内运行时；缺失时报告错误，避免悄悄依赖开发机的 Homebrew。
+    static func which(_ name: String) -> String? {
+        let app = Bundle.main.bundleURL
+        let portable = FileManager.default.fileExists(atPath:
+            app.appendingPathComponent("Contents/Resources/RuntimeManifest.json").path)
+        if ["ffmpeg", "ffprobe", "cwebp", "soffice"].contains(name) {
+            let relative = name == "soffice"
+                ? "Contents/Frameworks/LibreOffice.app/Contents/MacOS/soffice"
+                : "Contents/Helpers/\(name)"
+            let bundled = app.appendingPathComponent(relative).path
+            if FileManager.default.isExecutableFile(atPath: bundled) { return bundled }
+            if portable { return nil }
+        }
+        var dirs = portable ? ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+            : ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin"]
+        if !portable, let path = ProcessInfo.processInfo.environment["PATH"] {
+            dirs.append(contentsOf: path.split(separator: ":").map(String.init))
+        }
+        for dir in dirs {
+            let p = dir + "/" + name
+            if FileManager.default.isExecutableFile(atPath: p) { return p }
+        }
+        return nil
+    }
+
+    struct Result {
+        let status: Int32
+        let stdout: String
+        let stderr: String
+        let timedOut: Bool
+    }
+
+    @discardableResult
+    static func run(_ executable: String,
+                    _ arguments: [String],
+                    stdoutTo file: URL? = nil,
+                    captureOutput: Bool = false,
+                    timeout: TimeInterval = 0,
+                    cancellation: ConversionCancellation? = nil,
+                    onStdoutLine: ((String) -> Void)? = nil) throws -> Result {
+        let cancellation = cancellation ?? ConversionCancellation.current
+        try cancellation?.check()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        var environment = ProcessInfo.processInfo.environment
+        if URL(fileURLWithPath: executable).lastPathComponent == "soffice" {
+            // 禁止文档引擎在已签名的包内重写 Python 字节码缓存，保持搬移后签名有效。
+            environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        }
+        process.environment = environment
+
+        let errPipe = Pipe()
+        process.standardError = errPipe
+
+        var outHandle: FileHandle?
+        var stdoutReadHandle: FileHandle?
+        var stdoutCollector: (() -> String)?
+        if let file {
+            FileManager.default.createFile(atPath: file.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: file)
+            outHandle = handle
+            process.standardOutput = handle
+        } else if onStdoutLine != nil || captureOutput {
+            let outPipe = Pipe()
+            stdoutReadHandle = outPipe.fileHandleForReading
+            process.standardOutput = outPipe
+            let lock = NSLock()
+            var buffer = ""
+            var collected = ""
+            outPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty { handle.readabilityHandler = nil; return }
+                guard let text = String(data: data, encoding: .utf8) else { return }
+                lock.lock()
+                collected += text
+                buffer.append(text)
+                var lines: [String] = []
+                while let idx = buffer.firstIndex(of: "\n") {
+                    lines.append(String(buffer[buffer.startIndex..<idx]))
+                    buffer.removeSubrange(buffer.startIndex...idx)
+                }
+                lock.unlock()
+                for line in lines { onStdoutLine?(line) }
+            }
+            stdoutCollector = { lock.lock(); defer { lock.unlock() }; return collected }
+        }
+
+        let errLock = NSLock()
+        var errData = Data()
+        errPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty { handle.readabilityHandler = nil; return }
+            errLock.lock()
+            errData.append(data)
+            if errData.count > 64_000 { errData = errData.suffix(32_000) }
+            errLock.unlock()
+        }
+
+        let control = ProcessControl(process)
+        let registration = cancellation?.registerProcess { control.cancel() }
+        defer {
+            cancellation?.unregisterProcess(registration)
+            _ = control.finish()
+            errPipe.fileHandleForReading.readabilityHandler = nil
+            stdoutReadHandle?.readabilityHandler = nil
+            outHandle?.closeFile()
+        }
+        try control.start()
+        // 单文件上限保留；退出后取消超时工作，避免旧计时器误报。
+        control.scheduleTimeout(timeout)
+        process.waitUntilExit()
+        let timedOut = control.finish()
+        try cancellation?.check()
+        errPipe.fileHandleForReading.readabilityHandler = nil
+        stdoutReadHandle?.readabilityHandler = nil
+
+        errLock.lock()
+        let errText = String(data: errData, encoding: .utf8) ?? ""
+        errLock.unlock()
+
+        let outText = stdoutCollector?() ?? ""
+
+        return Result(status: process.terminationStatus, stdout: outText,
+                      stderr: errText, timedOut: timedOut)
+    }
+}
+
+// MARK: - 转换引擎
+
+enum Engine {
+
+    /// 计算最终输出路径，自动避让同名文件。
+    static func destinationURL(for source: URL, ext: String, in directory: URL) -> URL {
+        let base = source.deletingPathExtension().lastPathComponent
+        var candidate = directory.appendingPathComponent("\(base).\(ext)")
+        var index = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("\(base) \(index).\(ext)")
+            index += 1
+        }
+        return candidate
+    }
+
+    /// 执行一次转换，返回输出文件 URL。
+    static func convert(source: URL,
+                        format: OutputFormat,
+                        to directory: URL,
+                        stripMetadata: Bool = false,
+                        options: CompressionOptions = .none,
+                        cancellation: ConversionCancellation? = nil,
+                        progress: @escaping (Double) -> Void) throws -> URL {
+        let cancellation = cancellation ?? ConversionCancellation.current
+        try cancellation?.check()
+        let ext = FormatCatalog.actualExtension(for: format, source: source)
+        // 压缩包转 ZIP 是「外层打包」，文件名保留原扩展名，避免被当成重新压缩
+        let destination: URL
+        if FormatCatalog.kind(of: source) == .archive, ext == "zip" {
+            destination = wrappedZipDestination(for: source, in: directory)
+        } else {
+            destination = destinationURL(for: source, ext: ext, in: directory)
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try cancellation?.check()
+        let staging = directory.appendingPathComponent(".totori-output-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: staging) }
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)
+        let pending = staging.appendingPathComponent(destination.lastPathComponent)
+
+        return try ConversionCancellation.withCurrent(cancellation) {
+            try cancellation?.check()
+            // ImageIO/CoreImage 等同步系统调用只能在调用前后协作停止。
+            // 子进程则继承本线程 token，取消时终止本次 Process。
+            switch FormatCatalog.kind(of: source) {
+            case .image:
+                try convertImage(source: source, ext: ext, destination: pending,
+                                 stripMetadata: stripMetadata, options: options, progress: progress)
+            case .document:
+                try convertDocument(source: source, ext: ext, destination: pending, progress: progress)
+            case .media:
+                try convertMedia(source: source, format: format, destination: pending,
+                                 options: options, progress: progress)
+            case .archive:
+                try convertArchive(source: source, destination: pending, progress: progress)
+            case .unknown:
+                throw ConversionError.unsupported("无法识别的文件类型：\(source.pathExtension)")
+            }
+            try cancellation?.check()
+            // 发布后即为完成的文件；后到的取消保留这一结果，在下个文件前停止。
+            try FileManager.default.moveItem(at: pending, to: destination)
+            return destination
+        }
+    }
+
+    /// 06-归档.tar → 06-归档.tar.zip
+    private static func wrappedZipDestination(for source: URL, in directory: URL) -> URL {
+        let base = source.lastPathComponent
+        var candidate = directory.appendingPathComponent("\(base).zip")
+        var index = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("\(base) \(index).zip")
+            index += 1
+        }
+        return candidate
+    }
+
+    // MARK: 图片
+
+    private static func convertImage(source: URL,
+                                     ext: String,
+                                     destination: URL,
+                                     stripMetadata: Bool,
+                                     options: CompressionOptions,
+                                     progress: @escaping (Double) -> Void) throws {
+        progress(0.05)
+
+        guard let imageSource = CGImageSourceCreateWithURL(source as CFURL, nil),
+              CGImageSourceGetCount(imageSource) > 0 else {
+            throw ConversionError.failed("无法读取图片：\(source.lastPathComponent)")
+        }
+
+        if ext == "webp" {
+            guard let cwebp = Shell.which("cwebp") else {
+                throw ConversionError.toolMissing("需要 cwebp 才能输出 WebP（brew install webp）")
+            }
+            let temp = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("tangerine-\(UUID().uuidString).png")
+            defer { try? FileManager.default.removeItem(at: temp) }
+            let working = downscaled(imageSource, maxSide: options.maxSide) ?? imageSource
+            try ConversionCancellation.current?.check()
+            try writeImage(imageSource: working, to: temp, type: .png,
+                           quality: 1.0, flattened: stripMetadata)
+            progress(0.4)
+            let quality = String(Int(min(1, max(0, options.jpegQuality)) * 100))
+            let result = try Shell.run(cwebp, ["-quiet", "-q", quality, "-mt", "-o", destination.path, temp.path])
+            guard result.status == 0 else {
+                throw ConversionError.failed("WebP 编码失败：\(result.stderr.suffix(300))")
+            }
+            progress(1.0)
+            return
+        }
+
+        // sips 能写的格式（AVIF/BMP/GIF/JP2/ICNS）交给系统图像管线
+        if ["avif", "bmp", "gif", "jp2", "icns"].contains(ext) {
+            guard let sips = Shell.which("sips") else {
+                throw ConversionError.toolMissing("系统缺少 sips")
+            }
+            let quality = Int(options.jpegQuality * 100)
+            let result = try Shell.run(sips, ["-s", "format", ext,
+                                              "-s", "formatOptions", "\(quality)",
+                                              source.path, "--out", destination.path])
+            guard result.status == 0, FileManager.default.fileExists(atPath: destination.path) else {
+                throw ConversionError.failed("输出 \(ext.uppercased()) 失败：\(result.stderr.suffix(200))")
+            }
+            progress(1.0)
+            return
+        }
+
+        let type: UTType
+        switch ext {
+        case "pdf":  type = .pdf
+        case "jpg", "jpeg": type = .jpeg
+        case "heic": type = .heic
+        case "tiff": type = .tiff
+        default:     type = UTType(filenameExtension: ext) ?? .png
+        }
+
+        let working = downscaled(imageSource, maxSide: options.maxSide) ?? imageSource
+        try ConversionCancellation.current?.check()
+        try writeImage(imageSource: working, to: destination, type: type,
+                       quality: options.jpegQuality, flattened: stripMetadata)
+        progress(1.0)
+    }
+
+    /// 需要缩边时，先做一份缩略图数据源，后续流程不变
+    private static func downscaled(_ source: CGImageSource, maxSide: CGFloat?) -> CGImageSource? {
+        guard let maxSide, maxSide > 0 else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: Int(maxSide),
+        ]
+        guard let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+        let data = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else {
+            return nil
+        }
+        CGImageDestinationAddImage(dest, thumb, nil)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return CGImageSourceCreateWithData(data, nil)
+    }
+
+    private static func writeImage(imageSource: CGImageSource,
+                                   to url: URL,
+                                   type: UTType,
+                                   quality: Double,
+                                   flattened: Bool) throws {
+        try ConversionCancellation.current?.check()
+        let options: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: quality,
+        ]
+        guard let destination = CGImageDestinationCreateWithURL(
+            url as CFURL, type.identifier as CFString, CGImageSourceGetCount(imageSource), nil
+        ) else {
+            throw ConversionError.failed("不支持输出为 \(type.identifier)")
+        }
+        if flattened, let clean = flattenedImage(imageSource) {
+            CGImageDestinationAddImage(destination, clean, options as CFDictionary)
+        } else {
+            let count = type == .pdf ? 1 : CGImageSourceGetCount(imageSource)
+            for index in 0..<count {
+                try ConversionCancellation.current?.check()
+                CGImageDestinationAddImageFromSource(destination, imageSource, index, options as CFDictionary)
+            }
+        }
+        try ConversionCancellation.current?.check()
+        guard CGImageDestinationFinalize(destination) else {
+            throw ConversionError.failed("写出失败：\(url.lastPathComponent)")
+        }
+    }
+
+    /// 重绘一遍像素，丢掉 EXIF/GPS 等元数据
+    private static func flattenedImage(_ source: CGImageSource) -> CGImage? {
+        guard let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+
+        // 清元数据前先把 EXIF 方向/镜像烘焙进像素，否则竖图会被"抹平"成横图
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        let orientation = (properties?[kCGImagePropertyOrientation] as? UInt32) ?? 1
+
+        var pixels = image
+        if orientation != 1 {
+            let oriented = CIImage(cgImage: image).oriented(forExifOrientation: Int32(orientation))
+            guard let baked = CIContext(options: nil).createCGImage(oriented, from: oriented.extent) else {
+                return nil
+            }
+            pixels = baked
+        }
+
+        let width = pixels.width, height = pixels.height
+        guard let context = CGContext(
+            data: nil, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.draw(pixels, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
+    }
+
+    // MARK: 文档
+
+    /// 走 LibreOffice 的格式过滤器名
+    private static func libreOfficeFilter(for ext: String) -> String {
+        switch ext {
+        case "pdf":  return "pdf"
+        case "html": return "html"
+        case "txt":  return "txt:Text"
+        case "rtf":  return "rtf"
+        case "docx": return "docx:MS Word 2007 XML"
+        case "odt":  return "odt"
+        case "epub": return "epub"
+        case "md", "markdown": return "md:Markdown"
+        default:     return ext
+        }
+    }
+
+    private static func convertDocument(source: URL,
+                                        ext: String,
+                                        destination: URL,
+                                        progress: @escaping (Double) -> Void) throws {
+        progress(0.05)
+
+        // 1) 优先 LibreOffice：Office/ODF/Pages/EPUB 都能吃，排版最接近原版
+        if let soffice = Shell.which("soffice")
+            ?? (!FileManager.default.fileExists(atPath: Bundle.main.bundleURL
+                    .appendingPathComponent("Contents/Resources/RuntimeManifest.json").path)
+                && FileManager.default.isExecutableFile(atPath: "/Applications/LibreOffice.app/Contents/MacOS/soffice")
+                ? "/Applications/LibreOffice.app/Contents/MacOS/soffice" : nil) {
+            if try libreOfficeConvert(soffice: soffice,
+                                      source: source,
+                                      filter: source.pathExtension.lowercased() == "svg"
+                                          ? nil : libreOfficeFilter(for: ext),
+                                      destination: destination,
+                                      progress: progress) {
+                return
+            }
+            progress(0.4)
+        }
+
+        // 2) PDF：退回 cupsfilter（纯文本/RTF/HTML 效果可接受）
+        if ext == "pdf" {
+            guard let cupsfilter = Shell.which("cupsfilter") else {
+                throw ConversionError.toolMissing("系统缺少 cupsfilter，无法生成 PDF")
+            }
+            let result = try Shell.run(cupsfilter, ["-m", "application/pdf", source.path], stdoutTo: destination)
+            if result.status != 0 || fileSize(destination) < 100 {
+                try? FileManager.default.removeItem(at: destination)
+                throw ConversionError.failed("PDF 生成失败：该格式需要 LibreOffice 支持")
+            }
+            progress(1.0)
+            return
+        }
+
+        // 3) 纯文本类：textutil 兜底
+        guard let textutil = Shell.which("textutil") else {
+            throw ConversionError.toolMissing("系统缺少 textutil")
+        }
+        let convertName: String
+        switch ext {
+        case "docx": convertName = "docx"
+        case "rtf":  convertName = "rtf"
+        case "html": convertName = "html"
+        case "odt":  convertName = "odt"
+        case "txt":  convertName = "txt"
+        default:     convertName = ext
+        }
+
+        let result = try Shell.run(textutil, ["-convert", convertName, "-output", destination.path, source.path])
+        guard result.status == 0, FileManager.default.fileExists(atPath: destination.path) else {
+            throw ConversionError.failed("文档转换失败：\(result.stderr.suffix(300))")
+        }
+        progress(1.0)
+    }
+
+    /// 调 LibreOffice headless；成功写出 destination 返回 true。
+    private static func libreOfficeConvert(soffice: String,
+                                           source: URL,
+                                           filter: String?,
+                                           destination: URL,
+                                           progress: @escaping (Double) -> Void) throws -> Bool {
+        let staging = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("xiaoju-lo-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: staging) }
+
+        // 每次转换单独使用配置目录，避免与用户打开的 LibreOffice 或其他转换共享进程。
+        let profile = staging.appendingPathComponent("profile", isDirectory: true)
+
+        let args = [
+            "--headless", "--norestore", "--nolockcheck", "--nodefault",
+            "-env:UserInstallation=\(profile.absoluteString)",
+            "--convert-to", filter ?? destination.pathExtension,
+            "--outdir", staging.path,
+            source.path,
+        ]
+
+        do {
+            _ = try Shell.run(soffice, args, timeout: 300)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // 工具启动失败仍允许原有文档后端兜底；取消绝不走兜底。
+        }
+        try ConversionCancellation.current?.check()
+
+        let produced = (try? FileManager.default.contentsOfDirectory(at: staging,
+                                                                    includingPropertiesForKeys: nil))?
+            .first { $0.pathExtension.lowercased() == destination.pathExtension.lowercased() }
+
+        guard let produced, fileSize(produced) > 0 else { return false }
+        try? FileManager.default.removeItem(at: destination)
+        try FileManager.default.copyItem(at: produced, to: destination)
+        progress(1.0)
+        return true
+    }
+
+
+    // MARK: 音视频
+
+    private static func convertMedia(source: URL,
+                                     format: OutputFormat,
+                                     destination: URL,
+                                     options: CompressionOptions,
+                                     progress: @escaping (Double) -> Void) throws {
+        guard let ffmpeg = Shell.which("ffmpeg") else {
+            throw ConversionError.toolMissing("需要 ffmpeg（brew install ffmpeg）")
+        }
+
+        let duration = try mediaDuration(secondsOf: source)
+        progress(0.02)
+
+        var args = ["-hide_banner", "-nostdin", "-y", "-i", source.path]
+
+        switch format.ext {
+        case "mp4":
+            args += ["-c:v", "h264_videotoolbox", "-b:v", options.videoBitrate(fallback: "6M"), "-c:a", "aac", "-b:a", "160k",
+                     "-movflags", "+faststart"]
+        case "mov":
+            args += ["-c:v", "h264_videotoolbox", "-b:v", options.videoBitrate(fallback: "8M"), "-c:a", "aac", "-b:a", "192k",
+                     "-movflags", "+faststart"]
+        case "mkv":
+            args += ["-c:v", "libx264", "-preset", "veryfast",
+                     "-crf", "\(options.videoCRF)", "-c:a", "aac", "-b:a", "160k"]
+        case "avi":
+            args += ["-c:v", "mpeg4", "-qscale:v", "4", "-c:a", "libmp3lame", "-b:a", "192k"]
+        case "wmv":
+            args += ["-c:v", "wmv2", "-b:v", "4M", "-c:a", "wmav2", "-b:a", "192k"]
+        case "webm":
+            args += ["-c:v", "libvpx-vp9", "-crf", "32", "-b:v", "0", "-row-mt", "1",
+                     "-c:a", "libopus", "-b:a", "128k"]
+        case "gif":
+            args += ["-vf", "fps=12,scale=480:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse",
+                     "-loop", "0"]
+        case "mp3":
+            args += ["-vn", "-c:a", "libmp3lame", "-b:a", "192k"]
+        case "m4a":
+            args += ["-vn", "-c:a", "aac", "-b:a", "192k"]
+        case "wav":
+            args += ["-vn", "-c:a", "pcm_s16le"]
+        case "flac":
+            args += ["-vn", "-c:a", "flac", "-compression_level", "5"]
+        case "aiff":
+            args += ["-vn", "-c:a", "pcm_s16be"]
+        case "ogg", "opus":
+            args += ["-vn", "-c:a", "libopus", "-b:a", "128k"]
+        case "wma":
+            args += ["-vn", "-c:a", "wmav2", "-b:a", "192k"]
+        default:
+            throw ConversionError.unsupported("暂不支持输出为 \(format.name)")
+        }
+
+        args += ["-progress", "pipe:1", "-nostats", destination.path]
+
+        let result = try Shell.run(ffmpeg, args, timeout: 300) { line in
+            guard duration > 0, line.hasPrefix("out_time_us=") else { return }
+            let raw = line.dropFirst("out_time_us=".count)
+            if let us = Double(raw) {
+                progress(min(0.99, max(0.02, us / (duration * 1_000_000))))
+            }
+        }
+
+        if result.timedOut {
+            try? FileManager.default.removeItem(at: destination)
+            throw ConversionError.failed("超过 5 分钟上限，已中止（原版同样是这个限制）")
+        }
+        guard result.status == 0, FileManager.default.fileExists(atPath: destination.path) else {
+            let tail = result.stderr.suffix(400)
+            if tail.contains("does not contain any stream") || tail.contains("matches no streams") {
+                throw ConversionError.failed("源文件没有音轨，无法提取音频")
+            }
+            throw ConversionError.failed("转码失败：\(tail)")
+        }
+        progress(1.0)
+    }
+
+    private static func mediaDuration(secondsOf url: URL) throws -> Double {
+        guard let ffprobe = Shell.which("ffprobe") else { return 0 }
+        do {
+            let result = try Shell.run(ffprobe, [
+                "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", url.path,
+            ], captureOutput: true)
+            guard result.status == 0 else { return 0 }
+            let text = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            return Double(text) ?? 0
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return 0
+        }
+    }
+
+    // MARK: 压缩包
+
+    private static func convertArchive(source: URL,
+                                       destination: URL,
+                                       progress: @escaping (Double) -> Void) throws {
+        progress(0.05)
+        guard let ditto = Shell.which("ditto") else {
+            throw ConversionError.toolMissing("系统缺少 ditto")
+        }
+        let result = try Shell.run(ditto, ["-c", "-k", "--sequesterRsrc", "--keepParent",
+                                           source.path, destination.path])
+        guard result.status == 0 else {
+            throw ConversionError.failed("打包失败：\(result.stderr.suffix(200))")
+        }
+        progress(1.0)
+    }
+
+    // MARK: 工具
+
+    private static func fileSize(_ url: URL) -> Int64 {
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey])
+        return Int64(values?.fileSize ?? 0)
+    }
+}

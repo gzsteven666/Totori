@@ -1,0 +1,16 @@
+.DS_Store
+*.app/
+backups/
+work/
+outputs/
+dist/
+.totori-build*/
+__pycache__/
+*.pyc
+*.log
+.env
+.env.*
+*.p12
+*.pfx
+*.key
+*.mobileprovision
