@@ -83,3 +83,9 @@ python3 scripts/package-release.py --runtime-work-dir "$PWD/work/portable" --out
 `--probe-runtime` 检查四个引擎均来自当前 App；`--selftest` 生成合成样本并测试转换。测试时先退出正在运行的 Totori。分发检查脚本 `scripts/verify-release.py` 还会检查架构、签名与非系统动态依赖。
 
 当前发行版：**0.3.9 (30)**。在 Apple Silicon / macOS 27.2 上验证；macOS 13 是编译部署目标，尚未逐个实机验证所有旧版系统。
+
+## License
+
+Totori's own source code is released under the [MIT License](LICENSE). The bundled
+  third-party programs (FFmpeg, x264, LAME, libvpx, Opus, libwebp, libpng, LibreOffice) are independent
+  programs under their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
