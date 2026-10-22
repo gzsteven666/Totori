@@ -176,7 +176,7 @@ struct RedactEditorView: View {
                     if let draft = model.draft {
                         Rectangle()
                             .fill(Color.black.opacity(0.75))
-                            .overlay(Rectangle().strokeBorder(theme.tint, lineWidth: 1.2))
+                            .overlay(Rectangle().strokeBorder(Palette.brand, lineWidth: 1.2))
                             .frame(width: draft.width * fitted.width, height: draft.height * fitted.height)
                             .position(x: fitted.minX + draft.midX * fitted.width,
                                       y: fitted.minY + draft.midY * fitted.height)
@@ -232,7 +232,7 @@ struct RedactEditorView: View {
                 .frame(width: 140)
 
                 Text(model.mode == .redact ? "拖出方框即可涂黑，可叠加多个" : "按住拖动即可画线")
-                    .font(.system(size: 11))
+                    .font(.system(size: Palette.TypeSize.caption))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button("撤销") { model.undo() }
@@ -246,7 +246,7 @@ struct RedactEditorView: View {
         }
         .padding(16)
         .frame(minWidth: 700, minHeight: 540)
-        .tint(theme.tint)
+        .tint(Palette.brand)
         .background(Palette.surface)
     }
 

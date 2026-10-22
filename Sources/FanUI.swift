@@ -66,6 +66,11 @@ enum FanTheme: String, CaseIterable, Identifiable {
         }
     }
 
+    /// 选中花瓣的实心填充（强调色到悬停色）与其上的前景，所有主题共用，和主窗口按钮同一套取色。
+    var hotTop: Color { Palette.brand }
+    var hotBottom: Color { Palette.brandHover }
+    var hotInk: Color { Palette.onAccent }
+
     var gradient: LinearGradient {
         LinearGradient(
             colors: [tintLight, tint],
@@ -259,7 +264,13 @@ final class FanModel: ObservableObject {
     @Published private(set) var mode: FanMode = .convert
     @Published private(set) var items: [FanItem] = []
     @Published var highlighted: Int? = nil {
-        didSet { drivePaw() }
+        didSet {
+            drivePaw()
+            // 换到另一片花瓣时给触控板一下轻触，手在拖拽时不看屏幕也知道已经选中。
+            if highlighted != nil, highlighted != oldValue {
+                NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            }
+        }
     }
 
     // 龙猫小手：静止 → 探出 → 合拢 → 轻带
@@ -406,14 +417,22 @@ final class FanModel: ObservableObject {
 
     var radius: CGFloat { FanModel.radiusFor(items: items.count) }
 
-    static let hoverScale: CGFloat = 1.08
+    /// 选中放大倍数。花瓣多时环本来就挤，放大幅度收小，避免整个环被撑大。
+    static func hoverScale(forCount count: Int) -> CGFloat {
+        if Palette.reduceMotion { return 1 }
+        return count >= 12 ? 1.12 : 1.16
+    }
+
+    /// 未选中花瓣在有选中项时稍微退后，让被选中的那片自然“浮”出来。
+    static let dimmedScale: CGFloat = 0.97
 
     static func radiusFor(items count: Int) -> CGFloat {
         guard count > 1 else { return 140 }
         let width: CGFloat = count <= 8 ? 110 : (count <= 11 ? 100 : 88)
         let height = max(52, width * 0.60)
-        let horizontal = width * (1 + hoverScale) / 2 + 8
-        let vertical = height * (1 + hoverScale) / 2 + 8
+        let scale = hoverScale(forCount: count)
+        let horizontal = width * (1 + scale) / 2 + 8
+        let vertical = height * (1 + scale) / 2 + 8
         var radius: CGFloat = 140
         // 花瓣保持水平；按实际矩形间距留出一瓣选中放大的空间。
         for a in 0..<count {
@@ -523,21 +542,30 @@ struct FanView: View {
     @ObservedObject var model: FanModel
     @AppStorage("xiaoju.theme") private var themeRaw: String = FanTheme.forest.rawValue
 
-    private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .haze }
+    private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
 
     var body: some View {
         ZStack {
             backdrop
             ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
                 let isHot = model.highlighted == index
+                let hasHot = model.highlighted != nil
                 let bloom = petalBloom(index)
+                let restScale = (hasHot && !isHot && !Palette.reduceMotion) ? FanModel.dimmedScale : 1.0
                 petal(item: item, hot: isHot)
                     .frame(width: model.petalWidth, height: model.petalHeight)
-                    .scaleEffect((isHot ? FanModel.hoverScale : 1.0) * bloom.scale)
+                    .scaleEffect((isHot ? FanModel.hoverScale(forCount: model.items.count) : restScale) * bloom.scale)
                     .opacity(bloom.opacity)
+                    // 用降饱和而不是降透明度：半透明会让后面的环线透出来穿过花瓣
+                    .saturation(hasHot && !isHot ? 0.7 : 1)
+                    // 选中的那片压在邻居上面，放大后不被相邻花瓣遮住
+                    .zIndex(isHot ? 1 : 0)
                     .offset(y: bloom.rise)
                     .position(model.petalCenter(index))
-                    .animation(.spring(response: 0.20, dampingFraction: 0.66), value: isHot)
+                    .animation(Palette.reduceMotion ? .easeOut(duration: 0.10)
+                                                    : .spring(response: 0.20, dampingFraction: 0.66),
+                               value: isHot)
+                    .animation(.easeOut(duration: 0.12), value: hasHot)
             }
             if let point = model.pointerPoint, model.pointerAngle != nil {
                 draggedChip(at: point)
@@ -576,10 +604,10 @@ struct FanView: View {
                 .frame(width: 148, height: 148)
                 .allowsHitTesting(false)
 
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: Palette.Radius.card, style: .continuous)
                 .fill(Palette.surface.opacity(0.96))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: Palette.Radius.card, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.85), lineWidth: 0.9)
                 )
                 .frame(width: 56, height: 56)
@@ -598,7 +626,7 @@ struct FanView: View {
                 .overlay(alignment: .bottom) {
                     if !model.fileLabel.isEmpty {
                         Text(model.fileLabel)
-                            .font(.system(size: 7.5, weight: .medium))
+                            .font(.system(size: Palette.TypeSize.micro, weight: .medium))
                             .foregroundStyle(Palette.textSecondary)
                             .padding(.horizontal, 3)
                             .padding(.vertical, 1)
@@ -696,7 +724,7 @@ struct FanView: View {
 
     private var readingPill: some View {
         Text("读取文件…")
-            .font(.system(size: 11, weight: .medium))
+            .font(.system(size: Palette.TypeSize.caption, weight: .medium))
             .foregroundStyle(theme.ink.opacity(0.7))
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -715,7 +743,7 @@ struct FanView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Palette.textPrimary)
             Text(model.hint(for: item))
-                .font(.system(size: 11))
+                .font(.system(size: Palette.TypeSize.caption))
                 .foregroundStyle(Palette.textSecondary)
         }
         .frame(width: 148)
@@ -743,11 +771,11 @@ struct FanView: View {
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
                 .foregroundStyle(theme.tint)
             Text(model.highlighted == nil ? "松手取消" : model.mode.title)
-                .font(.system(size: 8.5, weight: .medium))
+                .font(.system(size: Palette.TypeSize.micro, weight: .medium))
                 .foregroundStyle(model.highlighted == nil ? theme.tint.opacity(0.85) : .secondary)
             if model.fileCount > 1 {
                 Text("\(model.fileCount) 个")
-                    .font(.system(size: 8))
+                    .font(.system(size: Palette.TypeSize.micro))
                     .foregroundStyle(.tertiary)
             }
         }
@@ -780,13 +808,13 @@ struct FanView: View {
             if item != .action(.copyPath) {
                 Image(systemName: item.symbol)
                     .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(hot ? Palette.brandHover : Palette.brand)
+                    .foregroundStyle(hot ? theme.hotInk : Palette.brand)
                     .frame(width: 13)
             }
             Text(item.title)
                 .font(.system(size: 14, weight: .semibold))
-                // 浅色凝胶上统一用深森林字，选中/未选中都保证对比度
-                .foregroundStyle(Palette.textPrimary)
+                // 未选中用深森林字；选中后底色换成实心强调色，字色跟着换成强调色上的前景
+                .foregroundStyle(hot ? theme.hotInk : Palette.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.9)
             Spacer(minLength: 0)
@@ -835,6 +863,12 @@ struct FanView: View {
                     .padding(.horizontal, 6)
                     .padding(.top, 2)
                     .blur(radius: 1.6)
+                // 选中：实心强调色盖在玻璃上，一眼就能和其余花瓣区分开
+                Capsule().fill(
+                    LinearGradient(colors: [theme.hotTop, theme.hotBottom],
+                                   startPoint: .top, endPoint: .bottom)
+                )
+                .opacity(hot ? 1 : 0)
                 // 软边：白在上、蓝在下，不像药丸
                 Capsule().strokeBorder(
                     LinearGradient(

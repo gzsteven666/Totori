@@ -68,11 +68,11 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 18) {
             section("拖拽快捷键") {
                 Text(SettingsPresentation.shortcutHint)
-                    .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                    .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                 ForEach(FanMode.allCases) { mode in
                     HStack(spacing: 6) {
                         Text(mode.title)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: Palette.TypeSize.label, weight: .medium))
                             .frame(width: 68, alignment: .leading)
                         ForEach(WheelKey.allCases) { key in
                             let keys = bindings[mode] ?? KeyMap.keys(for: mode)
@@ -90,11 +90,11 @@ struct SettingsView: View {
                                     Text(key.displayName)
                                     if lastKey { Image(systemName: "lock.fill").font(.system(size: 8)) }
                                 }
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: Palette.TypeSize.caption, weight: .semibold))
                                 .frame(maxWidth: .infinity, minHeight: 30)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                        .fill(bound ? theme.tint : Palette.surface)
+                                    RoundedRectangle(cornerRadius: Palette.Radius.small, style: .continuous)
+                                        .fill(bound ? Palette.brand : Palette.surface)
                                 )
                                 .foregroundStyle(bound ? Palette.onAccent : Palette.textSecondary)
                             }
@@ -112,12 +112,12 @@ struct SettingsView: View {
                             Text("\(conflict.key.displayName) 重复绑定：\(conflict.owners.map(\.title).joined(separator: "、"))；将先打开\(conflict.owners[0].title)。请取消其中一处绑定。")
                         }
                     }
-                    .font(.system(size: 11)).foregroundStyle(Palette.danger)
+                    .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.danger)
                     .accessibilityIdentifier("shortcuts.conflicts")
                 }
                 HStack {
                     Text(shortcutNotice ?? "带锁按键仍已启用；先添加替代键，才能取消。")
-                        .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                        .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                     Spacer()
                     Button("恢复默认快捷键") {
                         KeyMap.resetToDefaults()
@@ -129,11 +129,11 @@ struct SettingsView: View {
                 }
                 DisclosureGroup(isExpanded: $showsModifierHelp) {
                     Text(SettingsPresentation.modifierHelp)
-                        .font(.system(size: 10)).foregroundStyle(Palette.textSecondary)
+                        .font(.system(size: Palette.TypeSize.micro)).foregroundStyle(Palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 4)
                 } label: {
-                    Text("修饰键说明").font(.system(size: 10)).foregroundStyle(Palette.textSecondary)
+                    Text("修饰键说明").font(.system(size: Palette.TypeSize.micro)).foregroundStyle(Palette.textSecondary)
                 }
                 .accessibilityIdentifier("shortcuts.help")
             }
@@ -141,7 +141,7 @@ struct SettingsView: View {
             section("常用格式花瓣") {
                 HStack(alignment: .top, spacing: 14) {
                     Text(SettingsPresentation.favoritesHint)
-                        .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                        .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                     Spacer(minLength: 0)
                     Button("管理常用格式…") { FavoriteFormatsWindow.shared.present() }
                         .controlSize(.small).accessibilityIdentifier("favorites.manage")
@@ -150,7 +150,7 @@ struct SettingsView: View {
 
             section("操作步骤") {
                 Text("拖文件 → 按住已设置的快捷键 → 移到花瓣后松手。回到中心松手即可取消。")
-                    .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                    .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -173,10 +173,10 @@ struct SettingsView: View {
                 .accentColor(Palette.brand)
                 .accessibilityIdentifier("settings.convertQuality")
                 Text(SettingsPresentation.qualityHint)
-                    .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                    .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(SettingsPresentation.qualityScene(convertQuality))
-                    .font(.system(size: 12)).foregroundStyle(Palette.textPrimary)
+                    .font(.system(size: Palette.TypeSize.label)).foregroundStyle(Palette.textPrimary)
             }
 
             section("默认压缩档位") {
@@ -191,10 +191,10 @@ struct SettingsView: View {
                 .accentColor(Palette.brand)
                 .accessibilityIdentifier("settings.compressPreset")
                 Text(SettingsPresentation.compressHint)
-                    .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                    .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(SettingsPresentation.qualityScene(compressPreset))
-                    .font(.system(size: 12)).foregroundStyle(Palette.textPrimary)
+                    .font(.system(size: Palette.TypeSize.label)).foregroundStyle(Palette.textPrimary)
             }
         }
     }
@@ -210,7 +210,7 @@ struct SettingsView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .tint(theme.tint)
+            .tint(Palette.brand)
             .accessibilityIdentifier("settings.theme")
 
             HStack(spacing: 10) {
@@ -219,8 +219,8 @@ struct SettingsView: View {
                     Text("当前：\(theme.title)")
                         .font(.system(size: Palette.TypeSize.caption, weight: .medium))
                         .foregroundStyle(Palette.textPrimary)
-                    Text("影响花瓣、进度浮层、工具面板与按钮强调色；切换立即生效")
-                        .font(.system(size: 10))
+                    Text("影响整个界面的强调色与底色，包括花瓣、窗口和浮窗；切换立即生效")
+                        .font(.system(size: Palette.TypeSize.micro))
                         .foregroundStyle(Palette.textSecondary)
                 }
                 Spacer()

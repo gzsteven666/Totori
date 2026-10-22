@@ -14,7 +14,7 @@ struct FileRowThumbnail: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            RoundedRectangle(cornerRadius: 7).fill(Palette.surfaceSecondary)
+            RoundedRectangle(cornerRadius: Palette.Radius.small).fill(Palette.surfaceSecondary)
             if let image {
                 Image(decorative: image, scale: 2).resizable().scaledToFill()
                     .frame(width: 44, height: 44).clipped()
@@ -29,7 +29,7 @@ struct FileRowThumbnail: View {
                     .background(.black.opacity(0.55), in: Circle()).padding(2)
             }
         }
-        .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 7))
+        .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: Palette.Radius.small))
         .accessibilityHidden(true)
         .task(id: requestID) {
             image = nil

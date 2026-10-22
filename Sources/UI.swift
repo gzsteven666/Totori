@@ -50,6 +50,8 @@ final class AppModel: ObservableObject {
     @Published var statusText = "把文件拖进窗口，或点「选择文件」"
     @Published var results: [ConversionResult] = []
     @Published var jobStates: [URL: JobState] = [:]
+    /// 正在转换的文件各自的进度（0…1），行内进度环用；完成或取消后清除。
+    @Published var fileProgress: [URL: Double] = [:]
     @Published var cancelRequested = false
     @Published var metadataRevision = 0
 
@@ -160,6 +162,7 @@ final class AppModel: ObservableObject {
         files.removeAll()
         results.removeAll()
         jobStates.removeAll()
+        fileProgress.removeAll()
         lastPlan = nil
         metadataRevision += 1
         selectedFormat = nil
@@ -241,6 +244,7 @@ final class AppModel: ObservableObject {
         progress = 0
         metadataRevision += 1
         statusText = "准备转换 → \(plan.format.name)"
+        fileProgress.removeAll()
         for file in jobs { jobStates[file.url] = .queued }
 
         Task.detached(priority: .userInitiated) {
@@ -277,6 +281,7 @@ final class AppModel: ObservableObject {
                         Task { @MainActor in
                             guard self.activeRun == runID, self.isConverting, !self.cancelRequested else { return }
                             self.progress = max(self.progress, base + span * fraction)
+                            self.fileProgress[file.url] = min(1, max(self.fileProgress[file.url] ?? 0, fraction))
                         }
                     }
                     // 在转换工作线程捕获大小；列表重绘时不重复访问磁盘。
@@ -297,6 +302,7 @@ final class AppModel: ObservableObject {
                 await MainActor.run {
                     guard self.activeRun == runID else { return }
                     self.results.append(result)
+                    self.fileProgress.removeValue(forKey: file.url)
                     self.jobStates[file.url] = result.ok ? .succeeded : (result.cancelled ? .cancelled : .failed)
                     if !result.cancelled { self.progress = max(self.progress, base + span) }
                 }
@@ -306,6 +312,7 @@ final class AppModel: ObservableObject {
                 let order = Dictionary(uniqueKeysWithValues: plan.jobs.enumerated().map { ($0.element.url, $0.offset) })
                 self.results.sort { order[$0.source, default: 0] < order[$1.source, default: 0] }
                 self.isConverting = false
+                self.fileProgress.removeAll()
                 self.activeCancellation = nil
                 self.activeRun = nil
                 self.metadataRevision += 1
@@ -445,17 +452,17 @@ struct ContentView: View {
 
     private func noticeBar(_ text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.circle.fill").foregroundStyle(Palette.danger)
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.warning)
             ScrollView {
-                Text(text).font(.system(size: 11)).foregroundStyle(Palette.textPrimary)
+                Text(text).font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
             }.frame(height: min(88, CGFloat(text.split(separator: "\n").count) * 16 + 4))
             Spacer(minLength: 0)
             Button("知道了") { model.importNotice = nil }.buttonStyle(.plain)
-                .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
         }
         .padding(.horizontal, 20).padding(.vertical, 10)
-        .background(Palette.danger.opacity(0.08))
+        .background(Palette.warning.opacity(0.12))
     }
 
     /// 空态只有一个导入入口，导入后由紧凑工具条接管，不挤占文件列表。
@@ -478,22 +485,22 @@ struct ContentView: View {
                 Text("把文件拖到这里").font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(Palette.textPrimary)
                 Text("图片 · 文档 · 音视频 · 压缩包")
-                    .font(.system(size: 13)).foregroundStyle(Palette.textSecondary)
+                    .font(.system(size: Palette.TypeSize.body)).foregroundStyle(Palette.textSecondary)
                 Text("同类文件可批量转换，原文件会保留")
-                    .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                    .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
             }
             Button("选择文件…") { pickFiles() }
                 .buttonStyle(BrandPrimaryButtonStyle()).accessibilityIdentifier("import.choose")
             Text(dragShortcutHint)
-                .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
             Spacer(minLength: 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(28)
         .background(
-            RoundedRectangle(cornerRadius: 18)
+            RoundedRectangle(cornerRadius: Palette.Radius.panel)
                 .fill(isTargeted ? Palette.brandSoft.opacity(0.75) : Palette.surface.opacity(0.45))
-                .overlay(RoundedRectangle(cornerRadius: 18)
+                .overlay(RoundedRectangle(cornerRadius: Palette.Radius.panel)
                     .strokeBorder(isTargeted ? Palette.brand : Palette.line.opacity(0.8),
                                   style: StrokeStyle(lineWidth: isTargeted ? 2 : 1, dash: [6, 5])))
                 .padding(24)
@@ -503,10 +510,10 @@ struct ContentView: View {
     private var importBar: some View {
         HStack(spacing: 10) {
             Image(systemName: "tray.and.arrow.down").foregroundStyle(Palette.brand).accessibilityHidden(true)
-            Text("\(model.files.count) 个文件").font(.system(size: 12, weight: .semibold))
+            Text("\(model.files.count) 个文件").font(.system(size: Palette.TypeSize.label, weight: .semibold))
                 .foregroundStyle(Palette.textPrimary)
             Text(isTargeted ? "松手添加到列表" : "可继续拖入同类文件")
-                .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
             Spacer()
             Button("添加文件…") { pickFiles() }.controlSize(.small)
                 .focusable().focused($focusedControl, equals: .addFiles)
@@ -540,24 +547,21 @@ struct ContentView: View {
                                 .foregroundStyle(Palette.textPrimary).lineLimit(1).truncationMode(.middle)
                                 .help(file.url.path)
                             FileSummaryLabel(url: file.url, revision: model.metadataRevision)
-                            if let state = model.jobStates[file.url] {
-                                Label(state.rawValue, systemImage: stateSymbol(state))
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(state == .failed ? Palette.danger :
-                                                        (state == .succeeded ? Palette.success : Palette.textSecondary))
-                            }
                             if let summary = model.results.first(where: { $0.source == file.url })?.outputSummary {
-                                Text(summary.text).font(.system(size: 11)).monospacedDigit()
+                                Text(summary.text).font(.system(size: Palette.TypeSize.caption)).monospacedDigit()
                                     .foregroundStyle(summary.isSmaller ? Palette.success : Palette.textSecondary)
                                     .fixedSize(horizontal: false, vertical: true)
                                     .accessibilityIdentifier("file.outputSummary.\(file.id)")
                             }
                             if let result = model.results.first(where: { $0.source == file.url }), let error = result.error {
-                                Text(error).font(.system(size: 11)).foregroundStyle(Palette.danger)
+                                Text(error).font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.danger)
                                     .lineLimit(2).help(error)
                             }
                         }
                         Spacer(minLength: 12)
+                        if let state = model.jobStates[file.url] {
+                            JobStateBadge(state: state, progress: model.fileProgress[file.url])
+                        }
                         Button {
                             applyFileSelection(file.id, extend: false)
                             showPreview(file)
@@ -573,11 +577,17 @@ struct ContentView: View {
                                 }
                                 ComparisonWindow.shared.present(pairs: pairs, selectedOutput: output)
                             }
-                                .buttonStyle(.bordered).controlSize(.small).accessibilityLabel("对比 \(file.name) 的转换结果")
+                                .buttonStyle(.plain)
+                                .font(.system(size: Palette.TypeSize.caption, weight: .medium))
+                                .foregroundStyle(Palette.brand)
+                                .padding(.horizontal, 9).padding(.vertical, 4)
+                                .background(Capsule().fill(Palette.brandSoft))
+                                .contentShape(Capsule())
+                                .accessibilityLabel("对比 \(file.name) 的转换结果")
                                 .accessibilityIdentifier("file.compare.\(file.id)")
                         }
                         if !model.isConverting {
-                            Button { model.remove(file) } label: { Image(systemName: "xmark").font(.system(size: 11)) }
+                            Button { model.remove(file) } label: { Image(systemName: "xmark").font(.system(size: Palette.TypeSize.caption)) }
                                 .buttonStyle(.plain).foregroundStyle(Palette.textSecondary)
                                 .padding(5).contentShape(Rectangle())
                                 .help("从列表移除，保留原文件")
@@ -587,7 +597,7 @@ struct ContentView: View {
                     }
                     .padding(.vertical, 12).padding(.horizontal, 10)
                     .background(selection.ids.contains(file.id) ? Palette.brandSoft.opacity(0.65) : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: Palette.Radius.control))
                     .contentShape(Rectangle()).onTapGesture { selectFileRow(file) }
                     .accessibilityElement(children: .contain)
                     .id(file.id)
@@ -622,9 +632,10 @@ struct ContentView: View {
             HStack {
                 Text(selection.ids.isEmpty ? "⌘ 点击多选" : "已选 \(selection.ids.count) / \(model.files.count)")
                 Spacer()
-                Text("空格预览 · Delete 移除 · 原文件保留")
+                // 快捷键提示只在选中文件后出现；平时列表底部不常驻一整行说明
+                if !selection.ids.isEmpty { Text("空格预览 · Delete 移除 · 原文件保留") }
             }
-            .font(.system(size: 10)).foregroundStyle(Palette.textSecondary)
+            .font(.system(size: Palette.TypeSize.micro)).foregroundStyle(Palette.textSecondary)
             .padding(.horizontal, 20).padding(.vertical, 7)
         }
         .frame(maxHeight: .infinity).background(Palette.surface)
@@ -663,21 +674,11 @@ struct ContentView: View {
         previewURL = target?.url ?? previewItems.first
     }
 
-    private func stateSymbol(_ state: AppModel.JobState) -> String {
-        switch state {
-        case .queued: return "clock"
-        case .running: return "arrow.triangle.2.circlepath"
-        case .succeeded: return "checkmark.circle.fill"
-        case .failed: return "exclamationmark.circle.fill"
-        case .cancelled: return "pause.circle"
-        }
-    }
-
     private var options: some View {
         VStack(alignment: .leading, spacing: 10) {
             if model.supportsSpreadsheetPDFLayout {
                 HStack(spacing: 12) {
-                    Text("Excel 排版").font(.system(size: 12)).foregroundStyle(Palette.textSecondary)
+                    Text("Excel 排版").font(.system(size: Palette.TypeSize.label)).foregroundStyle(Palette.textSecondary)
                         .frame(width: 60, alignment: .leading)
                     Picker("Excel 排版", selection: $model.spreadsheetPDFLayout) {
                         ForEach(SpreadsheetPDFLayout.allCases) { layout in
@@ -686,35 +687,37 @@ struct ContentView: View {
                     }.labelsHidden().frame(width: 160)
                         .accessibilityIdentifier("task.spreadsheet-pdf-layout")
                     Text("适配页宽：A4 横向，1 页宽，高度自动")
-                        .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                        .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                     Spacer(minLength: 0)
                 }
             }
-            HStack(spacing: 12) {
-                Text("输出格式").font(.system(size: 12)).foregroundStyle(Palette.textSecondary)
-                    .frame(width: 60, alignment: .leading)
-                Picker("输出格式", selection: $model.selectedFormat) {
-                    ForEach(model.availableFormats) { format in Text(format.name).tag(Optional(format)) }
-                }.labelsHidden().frame(width: 140).disabled(model.availableFormats.isEmpty)
-                    .focusable().focused($focusedControl, equals: .outputFormat)
-                if let format = model.selectedFormat {
-                    Text(format.ext == "jpg" ? "有损，适合照片" : format.hint).font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
-                        .lineLimit(1).layoutPriority(-1).help(format.hint)
-                }
-                Spacer()
-                if model.selectedFormat?.supportsTaskQuality == true {
-                    Text("本次质量").font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
-                    Picker("本次质量", selection: $model.taskQuality) {
-                        ForEach(TaskConversionQuality.allCases) { quality in
-                            Text(quality == .defaults ? "默认（\(defaultQualityTitle)）" : quality.title).tag(quality)
+            HStack(alignment: .top, spacing: 12) {
+                Text("输出格式").font(.system(size: Palette.TypeSize.label)).foregroundStyle(Palette.textSecondary)
+                    .frame(width: 60, alignment: .leading).padding(.top, 5)
+                VStack(alignment: .leading, spacing: 8) {
+                    formatSelector
+                    HStack(spacing: 12) {
+                        if let format = model.selectedFormat {
+                            Text(format.ext == "jpg" ? "有损，适合照片" : format.hint)
+                                .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
+                                .lineLimit(1).layoutPriority(-1).help(format.hint)
                         }
-                    }.labelsHidden().frame(width: 138)
-                        .accessibilityIdentifier("task.quality")
-                        .help("仅用于按当前设置开始的新批次；重试沿用原批次参数。不会更改设置中的默认质量，也不会缩小图片尺寸。")
-                }
-                if model.currentKind == .image {
-                    Toggle("移除元数据", isOn: $model.stripMetadata).font(.system(size: 11))
-                        .toggleStyle(BrandCheckboxStyle()).help("仅影响输出图片，保留原文件")
+                        Spacer()
+                        if model.selectedFormat?.supportsTaskQuality == true {
+                            Text("本次质量").font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
+                            Picker("本次质量", selection: $model.taskQuality) {
+                                ForEach(TaskConversionQuality.allCases) { quality in
+                                    Text(quality == .defaults ? "默认（\(defaultQualityTitle)）" : quality.title).tag(quality)
+                                }
+                            }.labelsHidden().frame(width: 138)
+                                .accessibilityIdentifier("task.quality")
+                                .help("仅用于按当前设置开始的新批次；重试沿用原批次参数。不会更改设置中的默认质量，也不会缩小图片尺寸。")
+                        }
+                        if model.currentKind == .image {
+                            Toggle("移除元数据", isOn: $model.stripMetadata).font(.system(size: Palette.TypeSize.caption))
+                                .toggleStyle(BrandCheckboxStyle()).help("仅影响输出图片，保留原文件")
+                        }
+                    }
                 }
             }
             if let format = model.selectedFormat {
@@ -722,19 +725,19 @@ struct ContentView: View {
                 let generic = format.ext == "jpg" ? "有损，适合照片" : format.hint
                 if impact != generic {
                     Label(impact, systemImage: "info.circle")
-                        .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                        .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("conversion.impact")
                 }
             }
             HStack(spacing: 12) {
-                Text("保存到").font(.system(size: 12)).foregroundStyle(Palette.textSecondary)
+                Text("保存到").font(.system(size: Palette.TypeSize.label)).foregroundStyle(Palette.textSecondary)
                     .frame(width: 60, alignment: .leading)
                 Menu {
                     Button("原文件所在文件夹") { model.useSourceFolder = true }
                     Button("选择文件夹…") { pickOutputDirectory() }
                 } label: {
-                    Label(saveLocation, systemImage: "folder").font(.system(size: 12))
+                    Label(saveLocation, systemImage: "folder").font(.system(size: Palette.TypeSize.label))
                         .lineLimit(1).truncationMode(.middle)
                 }.help(saveLocation).accessibilityIdentifier("output.location")
                     .frame(maxWidth: 430, alignment: .leading)
@@ -742,6 +745,28 @@ struct ContentView: View {
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 12).background(Palette.canvas)
+    }
+
+    /// 格式不多（≤ 10 个，窄窗口会折成两行）时直接排成胶囊，一眼看全；格式再多才退回下拉框。
+    @ViewBuilder
+    private var formatSelector: some View {
+        if model.availableFormats.count <= 10 {
+            FormatChips(formats: model.availableFormats, selection: $model.selectedFormat)
+                .focusable().focused($focusedControl, equals: .outputFormat)
+        } else {
+            Picker("输出格式", selection: $model.selectedFormat) {
+                ForEach(model.availableFormats) { format in Text(format.name).tag(Optional(format)) }
+            }.labelsHidden().frame(width: 140).disabled(model.availableFormats.isEmpty)
+                .focusable().focused($focusedControl, equals: .outputFormat)
+        }
+    }
+
+    /// 转换前底部左侧给出本批的去向，不再重复顶部已有的“N 个文件”。
+    private var footerSummary: String {
+        guard !model.isConverting, model.results.isEmpty, !model.files.isEmpty,
+              let format = model.selectedFormat else { return model.taskSummary }
+        let place = model.useSourceFolder ? "原文件所在文件夹" : model.outputDirectory.lastPathComponent
+        return "将转换为 \(format.name) · 保存到 \(place)"
     }
 
     /// 每个阶段只强调一个动作，取消与重新转换不会冒充默认的下一步。
@@ -752,11 +777,11 @@ struct ContentView: View {
             }
             if let note = actionNote {
                 Label(note, systemImage: model.primaryAction == .newBatch ? "info.circle" : "arrow.clockwise")
-                    .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                    .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 12) {
-                Text(model.taskSummary).font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                Text(footerSummary).font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                     .lineLimit(2)
                 Spacer(minLength: 16)
                 if !model.files.isEmpty {
@@ -796,7 +821,7 @@ struct ContentView: View {
                         .accessibilityIdentifier("task.primary")
                 } else {
                     Label("文件在本机处理", systemImage: "lock.shield")
-                        .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                        .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                 }
             }
         }

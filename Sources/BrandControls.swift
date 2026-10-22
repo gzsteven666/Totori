@@ -7,27 +7,27 @@ struct BrandPrimaryButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .semibold))
+            .font(.system(size: Palette.TypeSize.body, weight: .semibold))
             .foregroundStyle(enabled ? Palette.onAccent : Palette.textSecondary)
             .padding(.horizontal, 17)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: Palette.Radius.row, style: .continuous)
                     .fill(LinearGradient(colors: [Palette.brand, Palette.brandHover],
                                          startPoint: .top, endPoint: .bottom))
                     .opacity(enabled ? 1 : 0.22)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        RoundedRectangle(cornerRadius: Palette.Radius.row, style: .continuous)
                             .fill(LinearGradient(colors: [Color.white.opacity(enabled ? 0.23 : 0.08), .clear],
                                                  startPoint: .top, endPoint: .center))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        RoundedRectangle(cornerRadius: Palette.Radius.row, style: .continuous)
                             .strokeBorder(LinearGradient(colors: [Color.white.opacity(0.45), Color.white.opacity(0.08)],
                                                          startPoint: .top, endPoint: .bottom), lineWidth: 0.8)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        RoundedRectangle(cornerRadius: Palette.Radius.row, style: .continuous)
                             .strokeBorder(Palette.focus.opacity(focused ? 1 : 0), lineWidth: 2)
                             .padding(-3)
                     )

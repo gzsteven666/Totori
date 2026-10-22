@@ -129,7 +129,7 @@ struct FavoritePreviewView: View {
                 .frame(width: side - 14, height: side - 14)
 
             Text("预览")
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: Palette.TypeSize.micro, weight: .medium))
                 .foregroundStyle(Palette.textSecondary)
 
             ForEach(Array(layout.slots.enumerated()), id: \.offset) { index, slot in
@@ -149,7 +149,7 @@ struct FavoritePreviewView: View {
         let isMore = index >= model.favorites.count
         return HStack(spacing: FavoritePreviewMetrics.gap) {
             Text("\(index + 1)")
-                .font(.system(size: 9, weight: .bold)).monospacedDigit()
+                .font(.system(size: Palette.TypeSize.micro, weight: .bold)).monospacedDigit()
                 .foregroundStyle(Palette.onAccent)
                 .frame(width: FavoritePreviewMetrics.badge, height: FavoritePreviewMetrics.badge)
                 .background(Circle().fill(isMore ? Palette.textSecondary : Palette.brand))

@@ -905,6 +905,21 @@ final class ShelfCanvas: NSView, NSDraggingSource, QLPreviewPanelDataSource, QLP
         y += gridCellH
     }
 
+    private var themeObserver: NSObjectProtocol?
+
+    /// 浮窗是自绘的，主题变了不会自动重画；挂到窗口后监听偏好变化并刷新。
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let themeObserver { NotificationCenter.default.removeObserver(themeObserver) }
+        themeObserver = nil
+        guard window != nil else { return }
+        themeObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.needsDisplay = true }
+        }
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         for area in trackingAreas where area.owner === self { removeTrackingArea(area) }
@@ -956,9 +971,10 @@ final class ShelfCanvas: NSView, NSDraggingSource, QLPreviewPanelDataSource, QLP
 
     override func draw(_ dirtyRect: NSRect) {
         relayout()
-        NSColor(Palette.surface).withAlphaComponent(0.30).setFill()
+        // 底色比之前更实：系统材质本身偏灰，盖得太薄会和主窗口的浅绿底色不是一个色调
+        NSColor(Palette.surface).withAlphaComponent(0.58).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 18, yRadius: 18).fill()
-        NSColor(Palette.brand).withAlphaComponent(0.05).setFill()
+        NSColor(Palette.brand).withAlphaComponent(0.06).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 18, yRadius: 18).fill()
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(rect: contentViewport).addClip()

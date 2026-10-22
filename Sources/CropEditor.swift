@@ -181,7 +181,7 @@ struct CropEditorView: View {
     var body: some View {
         VStack(spacing: 12) {
             Text(model.url.lastPathComponent)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: Palette.TypeSize.label, weight: .medium))
                 .foregroundStyle(.secondary)
 
             GeometryReader { geo in
@@ -217,7 +217,7 @@ struct CropEditorView: View {
                         .allowsHitTesting(false)
 
                     Rectangle()
-                        .strokeBorder(theme.tint, lineWidth: 1.5)
+                        .strokeBorder(Palette.brand, lineWidth: 1.5)
                         .frame(width: box.width, height: box.height)
                         .position(x: box.midX, y: box.midY)
                         .allowsHitTesting(false)
@@ -241,14 +241,14 @@ struct CropEditorView: View {
                         .controlSize(.small)
                 }
                 Spacer()
-                Text("宽").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text("宽").font(.system(size: Palette.TypeSize.micro)).foregroundStyle(.secondary)
                 TextField("", value: Binding(
                     get: { Int(model.cropPixels.width) },
                     set: { model.applyPixelSize(width: CGFloat($0), height: model.cropPixels.height) }
                 ), format: .number)
                 .frame(width: 64)
                 .textFieldStyle(.roundedBorder)
-                Text("高").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text("高").font(.system(size: Palette.TypeSize.micro)).foregroundStyle(.secondary)
                 TextField("", value: Binding(
                     get: { Int(model.cropPixels.height) },
                     set: { model.applyPixelSize(width: model.cropPixels.width, height: CGFloat($0)) }
@@ -259,7 +259,7 @@ struct CropEditorView: View {
 
             HStack(spacing: 10) {
                 Text("选区 \(Int(model.cropPixels.width)) × \(Int(model.cropPixels.height)) px")
-                    .font(.system(size: 11))
+                    .font(.system(size: Palette.TypeSize.caption))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button("取消") { onCancel() }
@@ -271,7 +271,7 @@ struct CropEditorView: View {
         }
         .padding(16)
         .frame(minWidth: 640, minHeight: 500)
-        .tint(theme.tint)
+        .tint(Palette.brand)
         .background(Palette.surface)
     }
 

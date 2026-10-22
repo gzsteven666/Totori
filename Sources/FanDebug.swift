@@ -476,24 +476,47 @@ enum MainWindowRender {
             urls.append(url)
         }
 
-        var failed = false
         DispatchQueue.main.async {
             let model = AppModel()
             model.add(urls: urls)
+            // 摆出三种典型状态：已完成（带体积对比）、转换中（带进度）、排队，用来核对行内布局。
+            if urls.count >= 3 {
+                model.results = [ConversionResult(
+                    source: urls[0], output: urls[0].deletingPathExtension().appendingPathExtension("png"),
+                    error: nil,
+                    outputSummary: ConversionOutputSummary(sourceExtension: "heic", outputExtension: "png",
+                                                           sourceBytes: 2_400_000, outputBytes: 5_100_000))]
+                model.jobStates = [urls[0]: .succeeded, urls[1]: .running, urls[2]: .queued]
+                model.fileProgress = [urls[1]: 0.45]
+            }
             model.statusText = "已完成 3 个文件 · 原文件已保留"
 
-            let view = ContentView(model: model)
-                .frame(width: 900, height: 600)
-            let renderer = ImageRenderer(content: view)
-            renderer.scale = 2
-            if let image = renderer.cgImage {
-                let url = URL(fileURLWithPath: outputPath)
-                if let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil) {
-                    CGImageDestinationAddImage(dest, image, nil)
-                    if !CGImageDestinationFinalize(dest) { failed = true }
-                } else { failed = true }
-            } else { failed = true }
-            exit(failed ? 1 : 0)
+            // 离屏窗口里真实渲染：ImageRenderer 画不出滚动列表和 AppKit 控件，会出占位禁止符。
+            let size = NSSize(width: 900, height: 600)
+            let hosting = NSHostingView(rootView: ContentView(model: model).frame(width: size.width, height: size.height))
+            hosting.frame = NSRect(origin: .zero, size: size)
+            let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.contentView = hosting
+            // 用 `-AppleInterfaceStyle Dark` 参数时离屏窗口不会自动跟随，手动指定
+            if UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark" {
+                window.appearance = NSAppearance(named: .darkAqua)
+            }
+            window.orderBack(nil)
+            hosting.layoutSubtreeIfNeeded()
+
+            // 文件简介、缩略图是异步读取的，等一会儿再截图。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                hosting.layoutSubtreeIfNeeded()
+                var failed = true
+                if let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) {
+                    hosting.cacheDisplay(in: hosting.bounds, to: rep)
+                    if let data = rep.representation(using: .png, properties: [:]),
+                       (try? data.write(to: URL(fileURLWithPath: outputPath))) != nil {
+                        failed = false
+                    }
+                }
+                exit(failed ? 1 : 0)
+            }
         }
         app.run()
         return 0

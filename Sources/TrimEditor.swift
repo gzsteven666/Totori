@@ -253,8 +253,8 @@ struct TrimEditorView: View {
                 }
 
                 Text("已选 \(time(model.selectedDuration)) / 总长 \(time(model.duration))")
-                    .font(.system(size: 11))
-                    .foregroundStyle(theme.ink.opacity(0.65))
+                    .font(.system(size: Palette.TypeSize.caption))
+                    .foregroundStyle(Palette.textPrimary.opacity(0.65))
 
                 Spacer()
 
@@ -270,7 +270,7 @@ struct TrimEditorView: View {
         }
         .padding(16)
         .frame(width: 640, height: 460)
-        .tint(theme.tint)
+        .tint(Palette.brand)
         .background(Palette.surface)
     }
 
@@ -282,12 +282,12 @@ struct TrimEditorView: View {
 
             ZStack(alignment: .leading) {
                 if model.thumbnails.isEmpty {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(theme.tint.opacity(0.18))
+                    RoundedRectangle(cornerRadius: Palette.Radius.row)
+                        .fill(Palette.brand.opacity(0.18))
                         .overlay(
                             Text(model.isAudioOnly ? "音频" : "无预览")
-                                .font(.system(size: 11))
-                                .foregroundStyle(theme.ink.opacity(0.5))
+                                .font(.system(size: Palette.TypeSize.caption))
+                                .foregroundStyle(Palette.textPrimary.opacity(0.5))
                         )
                 } else {
                     HStack(spacing: 2) {
@@ -300,7 +300,7 @@ struct TrimEditorView: View {
                                 .clipped()
                         }
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: Palette.Radius.row, style: .continuous))
                 }
 
                 // 未选中区域压暗
@@ -314,7 +314,7 @@ struct TrimEditorView: View {
 
                 // 选区边框
                 Rectangle()
-                    .strokeBorder(theme.tint, lineWidth: 2)
+                    .strokeBorder(Palette.brand, lineWidth: 2)
                     .frame(width: max(2, endX - startX))
                     .offset(x: startX)
             }
@@ -325,13 +325,13 @@ struct TrimEditorView: View {
     private func slider(title: String, value: Binding<Double>) -> some View {
         HStack(spacing: 10) {
             Text(title)
-                .font(.system(size: 10))
+                .font(.system(size: Palette.TypeSize.micro))
                 .foregroundStyle(.secondary)
                 .frame(width: 32, alignment: .leading)
             Slider(value: value, in: 0...max(model.duration, 0.1))
             Text(time(value.wrappedValue))
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(theme.ink.opacity(0.7))
+                .font(.system(size: Palette.TypeSize.micro, design: .monospaced))
+                .foregroundStyle(Palette.textPrimary.opacity(0.7))
                 .frame(width: 72, alignment: .trailing)
         }
     }

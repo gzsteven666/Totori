@@ -38,7 +38,7 @@ final class ComparisonWindow: NSObject, NSWindowDelegate {
         self.window = window
         window.contentView = NSHostingView(rootView: ComparisonView(model: model) { [weak self] url in
             self?.quickLook(url)
-        })
+        }.followsTheme())
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         model.load()
@@ -289,14 +289,14 @@ final class ComparisonModel: ObservableObject {
 private struct ComparisonView: View {
     @ObservedObject var model: ComparisonModel
     var quickLook: (URL) -> Void
-    @AppStorage("xiaoju.theme") private var themeRaw = FanTheme.forest.rawValue
-    private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             infoBar
-            if model.hasImageBatch { batchNavigation }
-            controls
+            toolbar
+            if let notice = dividerNotice {
+                Text(notice).font(.system(size: Palette.TypeSize.micro)).foregroundStyle(Palette.textSecondary)
+            }
             if model.loading {
                 VStack(spacing: 10) {
                     ProgressView()
@@ -306,7 +306,7 @@ private struct ComparisonView: View {
                 imageArea
                 if model.previewIsReduced {
                     Text("超大图片使用最长边 4096 像素的预览；100% 按原始像素定位。")
-                        .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                        .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                 }
             } else {
                 fallback
@@ -314,7 +314,7 @@ private struct ComparisonView: View {
         }
         .padding(16)
         .foregroundStyle(Palette.textPrimary)
-        .tint(theme.tint)
+        .tint(Palette.brand)
         .background(Palette.canvas)
         .onDisappear { model.releaseHold() }
         .onExitCommand { model.releaseHold() }
@@ -326,12 +326,12 @@ private struct ComparisonView: View {
         HStack(spacing: 12) {
             compactFile(model.source, metadata: model.sourceMetadata, tag: "原文件")
             Image(systemName: "arrow.right")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: Palette.TypeSize.micro, weight: .semibold))
                 .foregroundStyle(Palette.textSecondary)
             compactFile(model.output, metadata: model.outputMetadata, tag: "结果")
             Spacer(minLength: 8)
             if let change = model.changeText {
-                Text(change).font(.system(size: 11, weight: .medium))
+                Text(change).font(.system(size: Palette.TypeSize.caption, weight: .medium))
                     .foregroundStyle(model.volumeDecreased ? Palette.brand : Palette.textSecondary)
                     .lineLimit(1).truncationMode(.middle)
                     .help(change)
@@ -360,14 +360,14 @@ private struct ComparisonView: View {
     private func compactFile(_ url: URL, metadata: FileMetadataSnapshot?, tag: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 4) {
-                Text(tag).font(.system(size: 10, weight: .medium)).foregroundStyle(Palette.textSecondary)
+                Text(tag).font(.system(size: Palette.TypeSize.micro, weight: .medium)).foregroundStyle(Palette.textSecondary)
                 Text(url.lastPathComponent)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: Palette.TypeSize.label, weight: .semibold))
                     .lineLimit(1).truncationMode(.middle)
                     .help(url.path)
             }
             Text(detailLine(metadata))
-                .font(.system(size: 10)).foregroundStyle(Palette.textSecondary)
+                .font(.system(size: Palette.TypeSize.micro)).foregroundStyle(Palette.textSecondary)
                 .lineLimit(1)
                 .help([metadata?.summary, metadata?.exactSizeText].compactMap { $0 }.joined(separator: "\n"))
         }
@@ -384,83 +384,103 @@ private struct ComparisonView: View {
 
     // MARK: 控件
 
+    /// 上一张/下一张、对比方式、缩放、看原图合并成一条工具栏；窗口太窄时自动折成两行。
+    private var toolbar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                if model.hasImageBatch { batchNavigation }
+                modeCluster
+                Spacer(minLength: 8)
+                zoomCluster
+                holdCluster
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 14) {
+                    if model.hasImageBatch { batchNavigation }
+                    modeCluster
+                    Spacer(minLength: 8)
+                }
+                HStack(spacing: 14) {
+                    zoomCluster
+                    Spacer(minLength: 8)
+                    holdCluster
+                }
+            }
+        }
+        .controlSize(.small)
+        .disabled(!model.hasImagePair)
+    }
+
     private var batchNavigation: some View {
-        HStack(spacing: 10) {
-            Button { model.previous() } label: { Label("上一张", systemImage: "chevron.left") }
+        HStack(spacing: 6) {
+            Button { model.previous() } label: { Image(systemName: "chevron.left") }
                 .disabled(!model.canMovePrevious)
                 .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
                 .accessibilityIdentifier("comparison.previous")
+                .accessibilityLabel("上一张")
                 .help("上一张（⌥⌘←）；保留缩放、位置与对比方式")
             Text(model.positionText)
-                .font(.system(size: 11, weight: .medium)).monospacedDigit()
+                .font(.system(size: Palette.TypeSize.caption, weight: .medium)).monospacedDigit()
                 .accessibilityIdentifier("comparison.position")
-            Button { model.next() } label: { Label("下一张", systemImage: "chevron.right") }
+            Button { model.next() } label: { Image(systemName: "chevron.right") }
                 .disabled(!model.canMoveNext)
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
                 .accessibilityIdentifier("comparison.next")
+                .accessibilityLabel("下一张")
                 .help("下一张（⌥⌘→）；保留缩放、位置与对比方式")
-            Spacer()
         }
-        .controlSize(.small)
     }
 
-    private var controls: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                Button("适应") { model.fit = true; model.anchor = CGPoint(x: 0.5, y: 0.5) }
-                    .accessibilityIdentifier("comparison.fit").help("缩放到适合窗口")
-                Button("100%") { model.fit = false; model.zoom = 1 }
-                    .accessibilityIdentifier("comparison.actualSize").help("按 1:1 像素显示")
-                Slider(value: Binding(get: { model.zoom }, set: { model.fit = false; model.zoom = $0 }), in: 0.05...4)
-                    .frame(width: 110).accessibilityLabel("共同缩放")
-                Text(model.fit ? "适应窗口" : "\(Int((model.zoom * 100).rounded()))%")
-                    .font(.system(size: 11)).monospacedDigit().frame(width: 58, alignment: .leading)
-
-                Spacer(minLength: 6)
-
-                holdButton
-                Toggle(isOn: $model.lockOriginal) {
-                    Text("锁定原图").font(.system(size: 11))
-                }
-                .toggleStyle(.checkbox)
-                .accessibilityIdentifier("comparison.lockOriginal")
-                .help("锁定后持续显示原图，切换图片时保留；再点一次恢复对比")
-            }
-            .disabled(!model.hasImagePair)
-
-            HStack(spacing: 8) {
-                modeButton(.sideBySide, enabled: model.hasImagePair)
-                modeButton(.divider, enabled: model.canUseDivider)
-
-                if model.mode == .divider && model.canUseDivider {
-                    Slider(value: Binding(get: { model.divider }, set: { model.setDivider($0) }), in: 0...1)
-                        .frame(width: 100)
-                        .accessibilityIdentifier("comparison.divider")
-                        .accessibilityLabel("分界线位置")
-                        .help("左右移动分界线（可用方向键微调）")
-                    Text("\(Int((model.divider * 100).rounded()))%")
-                        .font(.system(size: 10)).monospacedDigit().frame(width: 32)
-                }
-
-                Text(dividerAvailabilityText)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Palette.textSecondary)
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
+    private var modeCluster: some View {
+        HStack(spacing: 8) {
+            modeButton(.sideBySide, enabled: model.hasImagePair)
+            modeButton(.divider, enabled: model.canUseDivider)
+            if model.mode == .divider && model.canUseDivider {
+                Slider(value: Binding(get: { model.divider }, set: { model.setDivider($0) }), in: 0...1)
+                    .frame(width: 100)
+                    .accessibilityIdentifier("comparison.divider")
+                    .accessibilityLabel("分界线位置")
+                    .help("左右移动分界线（可用方向键微调）")
+                Text("\(Int((model.divider * 100).rounded()))%")
+                    .font(.system(size: Palette.TypeSize.micro)).monospacedDigit().frame(width: 32)
             }
         }
-        .controlSize(.small)
     }
 
-    private var dividerAvailabilityText: String {
+    private var zoomCluster: some View {
+        HStack(spacing: 8) {
+            Button("适应") { model.fit = true; model.anchor = CGPoint(x: 0.5, y: 0.5) }
+                .accessibilityIdentifier("comparison.fit").help("缩放到适合窗口")
+            Button("100%") { model.fit = false; model.zoom = 1 }
+                .accessibilityIdentifier("comparison.actualSize").help("按 1:1 像素显示")
+            Slider(value: Binding(get: { model.zoom }, set: { model.fit = false; model.zoom = $0 }), in: 0.05...4)
+                .frame(width: 110).accessibilityLabel("共同缩放")
+            Text(model.fit ? "适应窗口" : "\(Int((model.zoom * 100).rounded()))%")
+                .font(.system(size: Palette.TypeSize.caption)).monospacedDigit().frame(width: 58, alignment: .leading)
+        }
+    }
+
+    private var holdCluster: some View {
+        HStack(spacing: 10) {
+            holdButton
+            Toggle(isOn: $model.lockOriginal) {
+                Text("锁定原图").font(.system(size: Palette.TypeSize.caption))
+            }
+            .toggleStyle(.checkbox)
+            .accessibilityIdentifier("comparison.lockOriginal")
+            .help("锁定后持续显示原图，切换图片时保留；再点一次恢复对比")
+        }
+    }
+
+    /// 一切正常时不提示；只有分界不可用、文件读不到这类需要解释的情形才出声。
+    private var dividerNotice: String? {
         if model.loading { return "正在读取文件预览…" }
         if model.sourceMetadata?.isReadable == false || model.outputMetadata?.isReadable == false {
             return "文件已移动或无法读取，分界与缩放不可用"
         }
         guard model.hasImagePair else { return "无法生成图片对比；可使用快速查看" }
         if !model.canUseDivider { return "两张图像素尺寸不同，分界不可用；可继续并排查看" }
-        return "分界要求两张图像素尺寸相同"
+        return nil
     }
 
     private func modeButton(_ mode: ComparisonModel.ComparisonMode, enabled: Bool) -> some View {
@@ -468,7 +488,7 @@ private struct ComparisonView: View {
             model.setMode(mode)
         } label: {
             Text(mode.title)
-                .font(.system(size: 11, weight: .medium))
+                .font(.system(size: Palette.TypeSize.caption, weight: .medium))
                 .padding(.horizontal, 9).padding(.vertical, 3)
                 .background(Capsule().fill(Palette.brand.opacity(model.mode == mode ? 0.85 : 0.12)))
                 .foregroundStyle(model.mode == mode ? Palette.onAccent : Palette.brand)
@@ -484,7 +504,7 @@ private struct ComparisonView: View {
 
     private var holdButton: some View {
         Button { } label: {
-            Text("按住看原图").font(.system(size: 11, weight: .medium))
+            Text("按住看原图").font(.system(size: Palette.TypeSize.caption, weight: .medium))
         }
         .buttonStyle(HoldOriginalButtonStyle(active: model.showingOriginalOnly) { pressed in
             model.holdOriginal = pressed
@@ -505,17 +525,21 @@ private struct ComparisonView: View {
         return model.mode == .divider ? "当前：分界对比" : "当前：并排对比"
     }
 
+    private var statusIsExceptional: Bool { model.showingOriginalOnly || model.dividerUnavailable }
+
     // MARK: 内容
 
     private var imageArea: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(statusText).font(.system(size: 10)).foregroundStyle(Palette.textSecondary)
+                // “并排/分界”已由上方分段按钮高亮表示，这里只在看原图、被迫退回并排时才出声
+                Text(statusText).font(.system(size: Palette.TypeSize.micro)).foregroundStyle(Palette.textSecondary)
+                    .opacity(statusIsExceptional ? 1 : 0)
                     .accessibilityIdentifier("comparison.status")
                 Spacer()
                 if (model.sourceMetadata?.frameCount ?? 1) > 1 || (model.outputMetadata?.frameCount ?? 1) > 1 {
                     Text("动图预览显示第一帧；播放请使用“快速查看”。")
-                        .font(.system(size: 10)).foregroundStyle(Palette.textSecondary)
+                        .font(.system(size: Palette.TypeSize.micro)).foregroundStyle(Palette.textSecondary)
                 }
             }
             GeometryReader { geometry in
@@ -539,8 +563,8 @@ private struct ComparisonView: View {
                                               ? nil
                                               : { model.setDivider(Double($0)) },
                                           anchor: $model.anchor)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.line, lineWidth: 0.8))
+                        .clipShape(RoundedRectangle(cornerRadius: Palette.Radius.control))
+                        .overlay(RoundedRectangle(cornerRadius: Palette.Radius.control).stroke(Palette.line, lineWidth: 0.8))
                 } else {
                     HStack(spacing: 12) {
                         imagePane(model.sourceBitmap, metadata: model.sourceMetadata, scale: scale)
@@ -559,13 +583,13 @@ private struct ComparisonView: View {
         VStack(spacing: 12) {
             Image(systemName: "doc.text.magnifyingglass").font(.system(size: 30, weight: .light))
             Text("可通过快速查看检查内容，或打开文件使用对应应用查看。")
-                .font(.system(size: 13)).multilineTextAlignment(.center)
+                .font(.system(size: Palette.TypeSize.body)).multilineTextAlignment(.center)
             if model.sourceMetadata?.isReadable == false || model.outputMetadata?.isReadable == false {
                 Text("原文件或结果已移动、删除或无法读取。可在上方菜单尝试定位文件。")
-                    .font(.system(size: 11))
+                    .font(.system(size: Palette.TypeSize.caption))
             } else if model.sourceMetadata?.isImage == true && model.outputMetadata?.isImage == true {
                 Text("这组图片无法生成并排预览。原文件与转换结果仍可通过上方菜单打开。")
-                    .font(.system(size: 11))
+                    .font(.system(size: Palette.TypeSize.caption))
             }
         }
         .foregroundStyle(Palette.textSecondary)
@@ -577,8 +601,8 @@ private struct ComparisonView: View {
                               originalSize: CGSize(width: metadata?.pixelWidth ?? 1,
                                                    height: metadata?.pixelHeight ?? 1),
                               scale: scale, anchor: $model.anchor)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.line, lineWidth: 0.8))
+            .clipShape(RoundedRectangle(cornerRadius: Palette.Radius.control))
+            .overlay(RoundedRectangle(cornerRadius: Palette.Radius.control).stroke(Palette.line, lineWidth: 0.8))
     }
 }
 

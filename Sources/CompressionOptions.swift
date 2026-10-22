@@ -205,35 +205,35 @@ struct CompressionPanelView: View {
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: preset.symbol)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(theme.tint)
+                            .font(.system(size: Palette.TypeSize.body, weight: .medium))
+                            .foregroundStyle(Palette.brand)
                             .frame(width: 18)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(preset.title)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: Palette.TypeSize.body, weight: .semibold))
                                 .foregroundStyle(Palette.textPrimary)
                             Text(preset.detail)
-                                .font(.system(size: 10))
+                                .font(.system(size: Palette.TypeSize.micro))
                                 .foregroundStyle(Palette.textSecondary)
                         }
                         Spacer()
                         if controller.preset == preset {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(theme.tint)
+                                .foregroundStyle(Palette.brand)
                         }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 9)
                     .frame(maxWidth: .infinity)
                     .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: Palette.Radius.card, style: .continuous)
                             .fill(controller.preset == preset
-                                  ? theme.tint.opacity(0.20)
+                                  ? Palette.brand.opacity(0.20)
                                   : Palette.surfaceSecondary)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                RoundedRectangle(cornerRadius: Palette.Radius.card, style: .continuous)
                                     .strokeBorder(controller.preset == preset
-                                                  ? theme.tint.opacity(0.75)
+                                                  ? Palette.brand.opacity(0.75)
                                                   : Color.clear, lineWidth: 1)
                             )
                     )
@@ -242,7 +242,7 @@ struct CompressionPanelView: View {
             }
 
             Text(controller.guidance)
-                .font(.system(size: 10))
+                .font(.system(size: Palette.TypeSize.micro))
                 .foregroundStyle(Palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -259,7 +259,7 @@ struct CompressionPanelView: View {
         }
         .padding(18)
         .frame(width: 380, height: 320)
-        .tint(theme.tint)
+        .tint(Palette.brand)
         .background(Palette.surface)
     }
 }

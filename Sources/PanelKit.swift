@@ -16,7 +16,7 @@ enum PanelKit {
         panel.isReleasedWhenClosed = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentView = NSHostingView(rootView: content)
+        panel.contentView = NSHostingView(rootView: content.followsTheme())
         panel.setContentSize(size)
         panel.center()
         return panel
@@ -175,7 +175,7 @@ struct ProgressHUDView: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.white.opacity(0.35))
                     Capsule()
-                        .fill(theme.gradient)
+                        .fill(LinearGradient(colors: [Palette.brand, Palette.brandHover], startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(6, geo.size.width * center.fraction))
                 }
             }
@@ -196,7 +196,7 @@ struct ProgressHUDView: View {
                 .fill(Palette.reduceTransparency ? AnyShapeStyle(Palette.surface) : AnyShapeStyle(.ultraThinMaterial))
                 .overlay(
                     RoundedRectangle(cornerRadius: Palette.Radius.popover, style: .continuous)
-                        .fill(theme.tint.opacity(Palette.reduceTransparency ? 0 : 0.12))
+                        .fill(Palette.brand.opacity(Palette.reduceTransparency ? 0 : 0.12))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: Palette.Radius.popover, style: .continuous)

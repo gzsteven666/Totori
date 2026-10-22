@@ -8,7 +8,7 @@ struct ConversionImpactLabel: View {
 
     var body: some View {
         Text(ConversionImpact.text(format: format, sources: sources))
-            .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+            .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("moreFormats.impact")
             .task(id: urls) {

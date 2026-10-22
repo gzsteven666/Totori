@@ -32,16 +32,16 @@ private struct RecentTasksView: View {
                     .font(.system(size: 16, weight: .semibold))
                 Spacer()
                 Text("本次运行 · 最近 10 批")
-                    .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                    .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
             }
             Text("保留主窗口、花瓣转换与压缩结果；重试另记一批，退出应用后清空。")
-                .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
             if store.records.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "clock").font(.system(size: 28)).foregroundStyle(Palette.brand)
                     Text("还没有最近任务").font(.system(size: 15, weight: .semibold))
                     Text("转换完成、失败或取消后，可以在这里找回结果和失败原因。")
-                        .font(.system(size: 12)).foregroundStyle(Palette.textSecondary)
+                        .font(.system(size: Palette.TypeSize.label)).foregroundStyle(Palette.textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityIdentifier("recent.empty")
@@ -52,20 +52,20 @@ private struct RecentTasksView: View {
                             ForEach(store.records) { record in
                                 Button { selectedID = record.id } label: {
                                     VStack(alignment: .leading, spacing: 5) {
-                                        Text(record.title).font(.system(size: 12, weight: .semibold))
+                                        Text(record.title).font(.system(size: Palette.TypeSize.label, weight: .semibold))
                                             .lineLimit(1)
-                                        Text(record.summary).font(.system(size: 11)).lineLimit(2)
+                                        Text(record.summary).font(.system(size: Palette.TypeSize.caption)).lineLimit(2)
                                         HStack {
                                             Text(record.origin.rawValue)
                                             Spacer()
                                             Text(record.finishedAt, style: .time).monospacedDigit()
-                                        }.font(.system(size: 10)).foregroundStyle(Palette.textSecondary)
+                                        }.font(.system(size: Palette.TypeSize.micro)).foregroundStyle(Palette.textSecondary)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(10)
-                                    .background(RoundedRectangle(cornerRadius: 10)
-                                        .fill(selected?.id == record.id ? theme.tint.opacity(0.13) : Palette.surface))
-                                    .contentShape(RoundedRectangle(cornerRadius: 10))
+                                    .background(RoundedRectangle(cornerRadius: Palette.Radius.row)
+                                        .fill(selected?.id == record.id ? Palette.brand.opacity(0.13) : Palette.surface))
+                                    .contentShape(RoundedRectangle(cornerRadius: Palette.Radius.row))
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("\(record.title)，\(record.summary)，\(record.origin.rawValue)")
@@ -79,7 +79,7 @@ private struct RecentTasksView: View {
             }
         }
         .padding(18).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .foregroundStyle(Palette.textPrimary).tint(theme.tint).background(Palette.canvas)
+        .foregroundStyle(Palette.textPrimary).tint(Palette.brand).background(Palette.canvas)
     }
 }
 
@@ -94,7 +94,7 @@ private struct RecentTaskDetail: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(record.title).font(.system(size: 14, weight: .semibold))
-                    Text(record.summary).font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                    Text(record.summary).font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                 }
                 Spacer(minLength: 0)
                 if !record.outputs.isEmpty {
@@ -103,17 +103,17 @@ private struct RecentTaskDetail: View {
                 }
             }
             if let notice {
-                Text(notice).font(.system(size: 11)).foregroundStyle(Palette.danger)
+                Text(notice).font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.danger)
                     .textSelection(.enabled).accessibilityIdentifier("recent.notice")
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     ForEach(record.items) { item in
                         VStack(alignment: .leading, spacing: 5) {
-                            Text(item.source.lastPathComponent).font(.system(size: 12, weight: .medium))
+                            Text(item.source.lastPathComponent).font(.system(size: Palette.TypeSize.label, weight: .medium))
                                 .textSelection(.enabled).help(item.source.path)
                             if let output = item.output {
-                                Text("→ \(output.lastPathComponent)").font(.system(size: 11))
+                                Text("→ \(output.lastPathComponent)").font(.system(size: Palette.TypeSize.caption))
                                     .textSelection(.enabled).help(output.path)
                                 FileSummaryLabel(url: output)
                                 HStack(spacing: 10) {
@@ -125,25 +125,25 @@ private struct RecentTaskDetail: View {
                                         .accessibilityIdentifier("recent.compare.\(item.id.uuidString)")
                                 }.controlSize(.small)
                                 if checked && !available.contains(output) {
-                                    Text("输出文件已移动、删除或无法读取").font(.system(size: 11))
+                                    Text("输出文件已移动、删除或无法读取").font(.system(size: Palette.TypeSize.caption))
                                         .foregroundStyle(Palette.danger)
                                 } else if checked && !available.contains(item.source) {
-                                    Text("原文件不可用，仍可定位输出").font(.system(size: 11))
+                                    Text("原文件不可用，仍可定位输出").font(.system(size: Palette.TypeSize.caption))
                                         .foregroundStyle(Palette.textSecondary)
                                 }
                             } else if let error = item.error {
-                                Text(error).font(.system(size: 11)).foregroundStyle(Palette.danger)
+                                Text(error).font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.danger)
                                     .textSelection(.enabled)
                             } else if item.cancelled {
-                                Text("已取消，未生成输出").font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                                Text("已取消，未生成输出").font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                             } else if item.keptOriginal {
-                                Text("压缩未减小体积，原文件保留").font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                                Text("压缩未减小体积，原文件保留").font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                             }
                         }.frame(maxWidth: .infinity, alignment: .leading)
                         Divider()
                     }
                     if let detail = record.detail, !detail.isEmpty {
-                        Text(detail).font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                        Text(detail).font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                             .textSelection(.enabled)
                     }
                 }

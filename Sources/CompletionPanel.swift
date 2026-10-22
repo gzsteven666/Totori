@@ -50,15 +50,15 @@ private struct CompletionView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     if let detail = record.detail {
-                        Text(detail).font(.system(size: 12)).foregroundStyle(Palette.textSecondary)
+                        Text(detail).font(.system(size: Palette.TypeSize.label)).foregroundStyle(Palette.textSecondary)
                             .textSelection(.enabled)
                     }
                     ForEach(record.outputs, id: \.self) { url in
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(url.lastPathComponent).font(.system(size: 12, weight: .medium))
+                            Text(url.lastPathComponent).font(.system(size: Palette.TypeSize.label, weight: .medium))
                             FileSummaryLabel(url: url)
                             Text(url.deletingLastPathComponent().path)
-                                .font(.system(size: 10)).foregroundStyle(Palette.textSecondary)
+                                .font(.system(size: Palette.TypeSize.micro)).foregroundStyle(Palette.textSecondary)
                                 .lineLimit(2).textSelection(.enabled)
                             if let pair = record.comparisons.first(where: { $0.output == url }) {
                                 Button("对比结果") {
@@ -86,7 +86,7 @@ private struct CompletionView: View {
             }
         }
         .padding(20)
-        .tint(theme.tint)
+        .tint(Palette.brand)
         .foregroundStyle(Palette.textPrimary)
         .background(Palette.surface)
     }

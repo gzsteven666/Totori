@@ -28,12 +28,12 @@ struct FavoriteFormatsView: View {
                 ForEach(FavoriteFormats.configurableKinds, id: \.self) { Text($0.title).tag($0) }
             }.pickerStyle(.segmented).accessibilityIdentifier("favorites.kind")
             Text("固定 4—6 个常用格式，按下面的顺序排列。修改在下次呼出花瓣时生效。")
-                .font(.system(size: 12)).foregroundStyle(Palette.textSecondary)
+                .font(.system(size: Palette.TypeSize.label)).foregroundStyle(Palette.textSecondary)
             HStack(alignment: .top, spacing: 14) {
                 FavoritePreviewView(kind: kind, formats: formats)
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("常用顺序 · \(formats.count)/6").font(.system(size: 12, weight: .semibold))
+                        Text("常用顺序 · \(formats.count)/6").font(.system(size: Palette.TypeSize.label, weight: .semibold))
                         Spacer()
                         Button("恢复默认") { FavoriteFormats.reset(kind); reload(); notice = "已恢复默认，下一次呼出生效" }
                             .controlSize(.small).accessibilityIdentifier("favorites.reset")
@@ -43,7 +43,7 @@ struct FavoriteFormatsView: View {
                 ForEach(Array(formats.enumerated()), id: \.element.id) { index, format in
                     HStack(spacing: 10) {
                         Text("\(index + 1)").monospacedDigit().foregroundStyle(Palette.textSecondary).frame(width: 18)
-                        Text(format.name).font(.system(size: 12, weight: .medium))
+                        Text(format.name).font(.system(size: Palette.TypeSize.label, weight: .medium))
                         Spacer()
                         Button { move(index, by: -1) } label: { Image(systemName: "chevron.up") }
                             .disabled(index == 0).accessibilityLabel("上移 \(format.name)")
@@ -52,28 +52,28 @@ struct FavoriteFormatsView: View {
                             .disabled(index == formats.count - 1).accessibilityLabel("下移 \(format.name)")
                             .accessibilityIdentifier("favorites.down.\(format.ext)")
                     }.padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Palette.brandSoft.opacity(0.5), in: RoundedRectangle(cornerRadius: 7))
+                        .background(Palette.brandSoft.opacity(0.5), in: RoundedRectangle(cornerRadius: Palette.Radius.small))
                 }
                     }
                     Text("从 12 点起，按顺时针排列；“更多”位于末尾。")
-                        .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                        .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
-            Text("选择格式").font(.system(size: 12, weight: .semibold))
+            Text("选择格式").font(.system(size: Palette.TypeSize.label, weight: .semibold))
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 8) {
                 ForEach(FormatCatalog.formats(for: kind)) { format in
                     let selected = formats.contains { $0.ext == format.ext }
                     Button { toggle(format) } label: {
                         Label(format.name, systemImage: selected ? "checkmark.square.fill" : "square")
-                            .font(.system(size: 11)).frame(maxWidth: .infinity, alignment: .leading)
+                            .font(.system(size: Palette.TypeSize.caption)).frame(maxWidth: .infinity, alignment: .leading)
                     }.buttonStyle(.bordered).tint(selected ? Palette.brand : Palette.textSecondary)
                         .accessibilityValue(selected ? "常用" : "未固定")
                         .accessibilityIdentifier("favorites.toggle.\(format.ext)")
                 }
             }
             Text(notice ?? "其余格式可从“更多”或主窗口选择。常用位置不会按使用频率自动重排。")
-                .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                 .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("favorites.notice")
             Spacer(minLength: 0)
         }.padding(20)
@@ -145,13 +145,13 @@ private struct MoreFormatsView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("为 \(urls.count) 个文件选择输出格式").font(.system(size: 15, weight: .semibold))
             Text(urls.first?.lastPathComponent ?? "").lineLimit(1).truncationMode(.middle)
-                .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
             Picker("输出格式", selection: $selectedIndex) {
                 ForEach(Array(formats.enumerated()), id: \.element.id) { index, format in Text(format.name).tag(index) }
             }.accessibilityIdentifier("moreFormats.format")
             ConversionImpactLabel(urls: urls, format: formats[selectedIndex])
             Text("保存到原文件所在文件夹，同名自动避让")
-                .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
             Spacer(minLength: 0)
             HStack {
                 Button("取消", action: onCancel).keyboardShortcut(.cancelAction)

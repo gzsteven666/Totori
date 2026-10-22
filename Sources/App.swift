@@ -54,7 +54,7 @@ struct TangerineLiteApp: App {
 
     var body: some Scene {
         WindowGroup("Totori", id: "main") {
-            ContentView(model: model)
+            ContentView(model: model).followsTheme()
         }
         .windowResizability(.contentMinSize)
         .commands {
