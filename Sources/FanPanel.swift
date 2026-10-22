@@ -327,8 +327,12 @@ final class FanController {
             let kind = FormatCatalog.kind(of: first)
             let pinned = favoriteSnapshot[kind] ?? FavoriteFormats.formats(for: kind)
             favoriteSnapshot[kind] = pinned
-            var result = pinned.map { FanItem.format($0) }
-            if pinned.count < FormatCatalog.formats(for: kind).count { result.append(.moreFormats(kind)) }
+            // 快照保存的是原始常用顺序；按本次文件能产出的格式过滤，避免出现必然失败的花瓣。
+            let allowed = FormatCatalog.formats(for: kind, sources: urls)
+            var shown = pinned.filter { allowed.contains($0) }
+            if shown.isEmpty { shown = allowed }   // 常用格式都不适用时（如 PDF 只能转 HTML）直接列出可用项
+            var result = shown.map { FanItem.format($0) }
+            if shown.count < allowed.count { result.append(.moreFormats(kind)) }
             return result
         case .tools:
             let kind = urls.first.map { FormatCatalog.kind(of: $0) } ?? .unknown

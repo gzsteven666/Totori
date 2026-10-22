@@ -82,7 +82,7 @@ final class AppModel: ObservableObject {
 
     var availableFormats: [OutputFormat] {
         guard let kind = currentKind else { return [] }
-        return FormatCatalog.formats(for: kind)
+        return FormatCatalog.formats(for: kind, sources: files.map(\.url))
     }
 
     @Published var importNotice: String?

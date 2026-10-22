@@ -94,6 +94,53 @@ enum FormatCatalog {
         }
     }
 
+    // MARK: - 按输入文件过滤输出格式
+
+    /// LibreOffice 只能把演示文稿、电子表格和 PDF 导出为 PDF / HTML；
+    /// 其余文档格式（txt、docx、epub 等）会失败，textutil 兜底也读不了这些输入。
+    private static let pdfHTMLOnlyExts: Set<String> = [
+        "pdf", "pptx", "ppt", "key", "xlsx", "xls", "numbers",
+    ]
+    /// csv / tsv 在 LibreOffice 中按表格打开，转文字类格式靠 textutil 兜底；它写不了 epub / md。
+    private static let tabularTextExts: Set<String> = ["csv", "tsv"]
+    private static let audioExts: Set<String> = [
+        "mp3", "m4a", "aac", "flac", "wav", "aiff", "aif", "ogg", "opus", "wma",
+    ]
+
+    /// 单个输入文件实际能产出的格式，顺序同目录。
+    /// 同格式再输出（如 JPG→JPEG）保留，那是重新编码/压缩的用法；只有 PDF→PDF 没有意义。
+    static func outputs(for source: URL) -> [OutputFormat] {
+        let ext = source.pathExtension.lowercased()
+        let kind = kind(of: source)
+        let candidates: [OutputFormat]
+        switch kind {
+        case .document:
+            if pdfHTMLOnlyExts.contains(ext) {
+                candidates = documents.filter { ["pdf", "html"].contains($0.ext) && $0.ext != ext }
+            } else if tabularTextExts.contains(ext) {
+                candidates = documents.filter { !["epub", "md"].contains($0.ext) }
+            } else if ext == "svg" {
+                candidates = documents.filter { $0.ext == "pdf" }
+            } else {
+                candidates = documents
+            }
+        case .media:
+            // 纯音频没有视频流，输出视频或 GIF 只会失败或得到无画面的文件
+            candidates = audioExts.contains(ext) ? medias.filter { audioExts.contains($0.ext) } : medias
+        default:
+            candidates = formats(for: kind)
+        }
+        return candidates
+    }
+
+    /// 一批同类文件共同支持的输出格式（交集）。`sources` 为空时返回该类型的全部格式。
+    static func formats(for kind: FileKind, sources: [URL]) -> [OutputFormat] {
+        let same = sources.filter { Self.kind(of: $0) == kind }
+        guard !same.isEmpty else { return formats(for: kind) }
+        let allowed = same.map { Set(outputs(for: $0)) }
+        return formats(for: kind).filter { format in allowed.allSatisfy { $0.contains(format) } }
+    }
+
     // MARK: - 类型判定
 
     private static let imageExts: Set<String> = [

@@ -350,6 +350,29 @@ enum SelfTest {
             print("\(pad("子进程输出完整性")) ✕        \(error)")
         }
 
+        // 输出格式按输入过滤：必然失败的组合不再提供，常规组合保持可选
+        do {
+            func exts(_ names: [String]) -> Set<String> {
+                Set(FormatCatalog.formats(for: FormatCatalog.kind(of: URL(fileURLWithPath: "/x/" + names[0])),
+                                          sources: names.map { URL(fileURLWithPath: "/x/" + $0) }).map(\.ext))
+            }
+            let checks: [(String, Bool)] = [
+                ("pptx 只能 PDF/HTML", exts(["a.pptx"]) == ["pdf", "html"]),
+                ("xlsx 只能 PDF/HTML", exts(["a.xlsx"]) == ["pdf", "html"]),
+                ("pdf 只能 HTML", exts(["a.pdf"]) == ["html"]),
+                ("docx 保留全部文档格式", exts(["a.docx"]) == Set(FormatCatalog.documents.map(\.ext))),
+                ("csv 不含 epub/md", !exts(["a.csv"]).contains("epub") && exts(["a.csv"]).contains("docx")),
+                ("mp3 不含视频/GIF", exts(["a.mp3"]).isDisjoint(with: ["mp4", "mov", "mkv", "webm", "avi", "wmv", "gif"])
+                    && exts(["a.mp3"]).contains("flac")),
+                ("mp4 保留全部音视频格式", exts(["a.mp4"]) == Set(FormatCatalog.medias.map(\.ext))),
+                ("jpg 保留 JPEG 重新编码", exts(["a.jpg"]).contains("jpg")),
+                ("多文件取交集", exts(["a.docx", "b.pdf"]) == ["html"]),
+            ]
+            let bad = checks.filter { !$0.1 }.map(\.0)
+            if bad.isEmpty { pass += 1 } else { fail += 1; failures.append("输出格式过滤：\(bad.joined(separator: "、"))") }
+            print("\(pad("输出格式按输入过滤")) \(bad.isEmpty ? "✓" : "✕")        \(checks.count) 条规则\(bad.isEmpty ? "" : "，失败：" + bad.joined(separator: "、"))")
+        }
+
         print("-------------------------------------------------------------")
         print("通过 \(pass) 项，失败 \(fail) 项")
         if !failures.isEmpty {

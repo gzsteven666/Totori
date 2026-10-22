@@ -117,7 +117,7 @@ final class MoreFormatsWindow {
 
     func present(urls: [URL]) {
         guard let first = urls.first else { return }
-        let formats = FormatCatalog.formats(for: FormatCatalog.kind(of: first))
+        let formats = FormatCatalog.formats(for: FormatCatalog.kind(of: first), sources: urls)
         guard !formats.isEmpty else { return }
         panel?.close()
         debugRequestCount += 1
