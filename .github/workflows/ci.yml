@@ -22,12 +22,9 @@ jobs:
           TOTORI_OUTPUT_APP: ${{ runner.temp }}/Totori.app
         run: ./build.sh
 
-  # 转换自检需要 ffmpeg / cwebp / LibreOffice，且视频用例使用 h264_videotoolbox 硬编。
-  # GitHub 托管的 macOS 虚拟机不保证提供硬件编码器，因此先作为参考结果（continue-on-error），
-  # 确认稳定通过后再去掉这一行，让它也成为必须通过的检查。
+  # 转换自检：需要 ffmpeg / cwebp / LibreOffice。系统 ImageIO 不能编码的格式（如虚拟机上的 AVIF）会自动跳过。
   selftest:
     runs-on: macos-15
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Install conversion tools
