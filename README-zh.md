@@ -88,6 +88,8 @@ open "Totori.app"               # 启动（菜单栏出现图标，同时打开�
 
 已有 `--probe-task-options`（真实写出范围、质量快照、取消/重试）与 `--probe-output-summary`（体积摘要语义）。
 
+正式包只带 `--selftest`、`--probe-runtime`、`--probe-document-pdf`；下面其余的 `--probe-*` 专项入口位于 `Checks/`，需要用 `TOTORI_CHECKS=1 ./build.sh` 构建带探针的开发版才能运行（分发构建会拒绝该选项）。`Package.swift` 供 IDE 索引与 `swift build` 快速编译检查使用，始终带探针。
+
 专项入口包括 `--probe-paw-tick`、`--probe-menu-mode`、`--probe-assets`、`--probe-shelf`、`--probe-theme` 等。独立验收还检查 8 种 EXIF 方向像素、精确修剪时长、压缩收益与并发命名。声明最低 macOS 13，当前实际验收机器为 macOS 27.2。
 
 ## 与原版 Tangerine 的差异
@@ -103,6 +105,7 @@ open "Totori.app"               # 启动（菜单栏出现图标，同时打开�
 ## 目录
 
 ```
+Checks/          验收探针与开发期渲染入口（仅 TOTORI_CHECKS 构建）
 Sources/
   App.swift        菜单栏入口（MenuBarExtra + WindowGroup）+ 权限引导
   FanUI.swift      格式花瓣扇形（几何 + 命中测试）

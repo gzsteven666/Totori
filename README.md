@@ -91,6 +91,13 @@ python3 scripts/package-release.py --runtime-work-dir "$PWD/work/portable" --out
 "/Applications/Totori.app/Contents/MacOS/Totori" --probe-document-pdf
 ```
 
+正式包只带 `--probe-runtime`、`--selftest`、`--probe-document-pdf` 三个自检入口。其余约 25 个界面与验收探针（`--probe-*`、`--dump-*` 等）放在 `Checks/`，只在开发构建里编译：
+
+```sh
+TOTORI_CHECKS=1 ./build.sh    # 带验收探针的开发构建；分发构建会拒绝这个选项
+swift build                   # 可选：用 Package.swift 做 IDE 索引或快速编译检查（始终带探针）
+```
+
 `--probe-runtime` 检查四个引擎均来自当前 App；`--selftest` 生成合成样本并测试转换。测试时先退出正在运行的 Totori。分发检查脚本 `scripts/verify-release.py` 还会检查架构、签名与非系统动态依赖。
 
 当前发行版：**0.3.9 (30)**。在 Apple Silicon / macOS 27.2 上验证；macOS 13 是编译部署目标，尚未逐个实机验证所有旧版系统。

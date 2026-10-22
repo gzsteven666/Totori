@@ -14,3 +14,4 @@ __pycache__/
 *.pfx
 *.key
 *.mobileprovision
+.build/

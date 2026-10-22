@@ -41,8 +41,18 @@ mkdir -p "$NEW_APP/Contents/MacOS" "$NEW_APP/Contents/Resources"
 
 echo "==> 编译到临时目录；现有 App 保持可用"
 SOURCES=("$ROOT"/Sources/*.swift)
+SWIFT_FLAGS=()
+if [ "${TOTORI_CHECKS:-0}" = "1" ]; then
+  if [ -n "$RUNTIME" ]; then
+    echo "TOTORI_CHECKS=1 带有验收探针，只用于开发验证，不能用于分发构建" >&2
+    exit 1
+  fi
+  echo "==> 包含验收探针（TOTORI_CHECKS=1，仅用于开发验证）"
+  SOURCES+=("$ROOT"/Checks/*.swift)
+  SWIFT_FLAGS+=(-D TOTORI_CHECKS)
+fi
 swiftc -O -swift-version 5 -target arm64-apple-macos13.0 \
-  -sdk "$SDK" -o "$BIN" "${SOURCES[@]}"
+  ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"} -sdk "$SDK" -o "$BIN" "${SOURCES[@]}"
 
 cp "$ROOT/Resources/Info.plist" "$NEW_APP/Contents/Info.plist"
 for resource in AppIcon.icns menubar.png menubar@2x.png totori-paw-open.png totori-paw-grasp.png fonts.conf; do
