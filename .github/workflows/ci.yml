@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 必须通过：只依赖 Command Line Tools，验证源码能编译、组装并通过签名检查。
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swiftc --version
+      - name: Build
+        env:
+          TOTORI_OUTPUT_APP: ${{ runner.temp }}/Totori.app
+        run: ./build.sh
+
+  # 转换自检需要 ffmpeg / cwebp / LibreOffice，且视频用例使用 h264_videotoolbox 硬编。
+  # GitHub 托管的 macOS 虚拟机不保证提供硬件编码器，因此先作为参考结果（continue-on-error），
+  # 确认稳定通过后再去掉这一行，让它也成为必须通过的检查。
+  selftest:
+    runs-on: macos-15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install conversion tools
+        run: |
+          brew install ffmpeg webp
+          brew install --cask libreoffice
+      - name: Build
+        env:
+          TOTORI_OUTPUT_APP: ${{ runner.temp }}/Totori.app
+        run: ./build.sh
+      - name: Self test
+        run: |
+          export PATH="/Applications/LibreOffice.app/Contents/MacOS:$PATH"
+          "$RUNNER_TEMP/Totori.app/Contents/MacOS/XiaoJuConvert" --selftest
+      - name: Document PDF probe
+        run: |
+          export PATH="/Applications/LibreOffice.app/Contents/MacOS:$PATH"
+          "$RUNNER_TEMP/Totori.app/Contents/MacOS/XiaoJuConvert" --probe-document-pdf
