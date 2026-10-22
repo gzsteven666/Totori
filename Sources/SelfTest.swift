@@ -315,6 +315,25 @@ enum SelfTest {
             print("\(pad("竖图 → WebP 方向")) \(ok ? "✓" : "✕")        \(detail)")
         }
 
+        // 清除元数据时重绘像素，必须沿用原图色彩空间（如 Display P3），不能压成 DeviceRGB
+        do {
+            let p3 = root.appendingPathComponent("p3.png")
+            var detail = "无法生成 P3 样本"
+            var ok = false
+            if makeP3PNG(at: p3), let png = FormatCatalog.images.first(where: { $0.ext == "png" }) {
+                do {
+                    let out = try Engine.convert(source: p3, format: png, to: outDir, stripMetadata: true) { _ in }
+                    let space = CGImageSourceCreateWithURL(out as CFURL, nil)
+                        .flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }?.colorSpace
+                    let name = (space?.name as String?) ?? "无"
+                    ok = name == (CGColorSpace.displayP3 as String)
+                    detail = "输出色彩空间：\(name)"
+                } catch { detail = "\(error)" }
+            }
+            if ok { pass += 1 } else { fail += 1; failures.append("清元数据后色彩空间：\(detail)") }
+            print("\(pad("清元数据保留色域")) \(ok ? "✓" : "✕")        \(detail)")
+        }
+
         // 长任务超时：无进展会被中止，持续有进展则不受总时长限制
         do {
             let began = Date()
@@ -412,6 +431,22 @@ enum SelfTest {
               ) else { return false }
         CGImageDestinationAddImage(destination, image,
                                    [kCGImagePropertyOrientation: 6] as CFDictionary)
+        return CGImageDestinationFinalize(destination)
+    }
+
+    /// Display P3 色彩空间的 PNG，用来检查重绘后色域是否被压回 sRGB。
+    private static func makeP3PNG(at url: URL) -> Bool {
+        guard let space = CGColorSpace(name: CGColorSpace.displayP3),
+              let context = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return false }
+        context.setFillColor(CGColor(colorSpace: space, components: [0.0, 1.0, 0.2, 1.0])!)
+        context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        guard let image = context.makeImage(),
+              let destination = CGImageDestinationCreateWithURL(
+                url as CFURL, UTType.png.identifier as CFString, 1, nil
+              ) else { return false }
+        CGImageDestinationAddImage(destination, image, nil)
         return CGImageDestinationFinalize(destination)
     }
 

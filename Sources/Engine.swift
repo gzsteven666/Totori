@@ -517,10 +517,20 @@ enum Engine {
         }
 
         let width = pixels.width, height = pixels.height
+        // 沿用原图色彩空间重绘，否则 Display P3 等广色域照片会被压成设备 RGB、颜色变淡；
+        // 灰度/CMYK 等不能直接做 RGBA 画布的空间，退回 sRGB 并由 CoreGraphics 做色彩匹配。
+        let source = pixels.colorSpace
+        let usable = source.flatMap { $0.model == .rgb ? $0 : nil }
+        let fallback = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         guard let context = CGContext(
             data: nil, width: width, height: height,
             bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
+            space: usable ?? fallback,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) ?? CGContext(
+            data: nil, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: fallback,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
         context.draw(pixels, in: CGRect(x: 0, y: 0, width: width, height: height))
