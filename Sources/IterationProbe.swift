@@ -24,15 +24,15 @@ enum IterationProbe {
             if condition { passed += 1 } else { failed += 1 }
             print("\(condition ? "PASS" : "FAIL") \(label)")
         }
-        let root = URL(fileURLWithPath: "/Users/mac/Documents/Codex/2026-10-19/zhe/work/iteration3")
-        let originals = URL(fileURLWithPath: "/Users/mac/Documents/Codex/2026-10-19/zhe/work/acceptance-round2/inputs")
+        let root = ProbeFixtures.work
+        let originals = ProbeFixtures.inputs
         let folder = root.appendingPathComponent("probe-\(getpid())", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let png = originals.appendingPathComponent("01-森林样本.png")
             let originalHash = try digest(png)
             let image = await FileMetadataReader.read(png)
-            expect(image.pixelWidth == 1200 && image.pixelHeight == 800 && image.byteCount == 8294, "图片简介包含真实像素与字节")
+            expect(image.pixelWidth == 1200 && image.pixelHeight == 800 && image.byteCount == (try? FileManager.default.attributesOfItem(atPath: png.path)[.size] as? NSNumber)?.int64Value, "图片简介包含真实像素与字节")
             let rotated = await FileMetadataReader.read(originals.appendingPathComponent("08-方向6.jpg"))
             expect(rotated.pixelWidth == 800 && rotated.pixelHeight == 1200, "EXIF方向6交换显示宽高")
             let video = await FileMetadataReader.read(originals.appendingPathComponent("07-视频样本.mp4"))

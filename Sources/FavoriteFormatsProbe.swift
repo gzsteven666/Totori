@@ -24,7 +24,7 @@ enum FavoriteFormatsProbe {
             if condition { passed += 1 } else { failed += 1 }
             print("\(condition ? "PASS" : "FAIL") \(label)")
         }
-        let base = URL(fileURLWithPath: "/Users/mac/Documents/Codex/2026-10-19/zhe/work/iteration8/native-inputs")
+        let base = ProbeFixtures.inputs
         let png = base.appendingPathComponent("02-透明图层.png")
         let jpeg = base.appendingPathComponent("02-透明图层.jpg")
         let before = try? Data(contentsOf: png)

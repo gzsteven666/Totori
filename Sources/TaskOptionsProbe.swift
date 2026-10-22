@@ -19,8 +19,8 @@ enum TaskOptionsProbe {
             print("\(condition ? "PASS" : "FAIL") \(label)")
         }
         let fm = FileManager.default
-        let root = URL(fileURLWithPath: "/Users/mac/Documents/Codex/2026-10-19/zhe/work/iteration8/task-probe-\(getpid())", isDirectory: true)
-        let fixture = URL(fileURLWithPath: "/Users/mac/Documents/Codex/2026-10-19/zhe/work/ui-review-22/01-旅行照片-家庭合影-精选修订版.png")
+        let root = ProbeFixtures.work.appendingPathComponent("task-probe-\(getpid())", isDirectory: true)
+        let fixture = ProbeFixtures.inputs.appendingPathComponent("01-旅行照片-家庭合影-精选修订版.png")
         let previous = UserDefaults.standard.string(forKey: "xiaoju.convertQuality")
         do {
             let bytes = try Data(contentsOf: fixture)

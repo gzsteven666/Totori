@@ -12,7 +12,7 @@ enum FanSafetyProbe {
             print("\(value ? "PASS" : "FAIL") \(label)")
         }
         let controller = FanController.shared
-        let file = URL(fileURLWithPath: "/Users/mac/Documents/Codex/2026-10-19/zhe/work/iteration7/finder-input/抓取测试-B.png")
+        let file = ProbeFixtures.inputs.appendingPathComponent("抓取测试-B.png")
         controller.debugSuppressActions = true
         defer {
             controller.hide()

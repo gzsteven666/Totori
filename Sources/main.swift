@@ -99,7 +99,7 @@ if CommandLine.arguments.contains("--probe-menu-mode") {
 if let index = CommandLine.arguments.firstIndex(of: "--probe-acceptance") {
     let inputs = CommandLine.arguments.count > index + 1
         ? CommandLine.arguments[index + 1]
-        : "/Users/mac/Documents/Codex/2026-10-19/zhe/work/acceptance/inputs"
+        : ProbeFixtures.inputs.path
     exit(MainActor.assumeIsolated { AcceptanceProbe.run(inputs: inputs) })
 }
 if CommandLine.arguments.contains("--probe-paw-tick") {

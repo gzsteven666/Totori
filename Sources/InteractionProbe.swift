@@ -87,10 +87,10 @@ enum InteractionProbe {
         KeyMap.resetToDefaults()
 
         do {
-            let root = URL(fileURLWithPath: "/Users/mac/Documents/Codex/2026-10-19/zhe/work")
-            let original = root.appendingPathComponent("iteration5/final-inputs/01-旅行照片-家庭合影-精选修订版.png")
+            let root = ProbeFixtures.work
+            let original = ProbeFixtures.inputs.appendingPathComponent("01-旅行照片-家庭合影-精选修订版.png")
             let originalHash = try hash(original)
-            let folder = root.appendingPathComponent("iteration6/interaction-probe-\(getpid())")
+            let folder = root.appendingPathComponent("interaction-probe-\(getpid())")
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let urls = try (0..<18).map { index -> URL in
                 let url = folder.appendingPathComponent(String(format: "文件-%02d.png", index))

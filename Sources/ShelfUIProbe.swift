@@ -28,9 +28,8 @@ enum ShelfUIProbe {
             else { defaults.removeObject(forKey: "xiaoju.shelfViewMode") }
         }
         defaults.set("grid", forKey: "xiaoju.shelfViewMode")
-        let base = URL(fileURLWithPath: "/Users/mac/Documents/Codex/2026-10-19/zhe/work")
-        let inputs = base.appendingPathComponent("acceptance-round2/inputs")
-        let folder = base.appendingPathComponent("iteration5/shelf-probe-\(getpid())", isDirectory: true)
+        let inputs = ProbeFixtures.inputs
+        let folder = ProbeFixtures.work.appendingPathComponent("shelf-probe-\(getpid())", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let original = inputs.appendingPathComponent("01-森林样本.png")

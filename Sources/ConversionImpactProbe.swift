@@ -20,7 +20,7 @@ enum ConversionImpactProbe {
             print("\(ok ? "PASS" : "FAIL") \(label)")
         }
         let fm = FileManager.default
-        let folder = URL(fileURLWithPath: "/Users/mac/Documents/Codex/2026-10-19/zhe/work/iteration10/impact-probe-\(getpid())")
+        let folder = ProbeFixtures.work.appendingPathComponent("impact-probe-\(getpid())")
         func format(_ ext: String, _ kind: FileKind) -> OutputFormat {
             FormatCatalog.formats(for: kind).first { $0.ext == ext }!
         }
@@ -52,7 +52,7 @@ enum ConversionImpactProbe {
                    "实际JPEG没有透明通道且保留像素尺寸")
             expect(try Data(contentsOf: alpha) == original, "读取提示与转换保留原图")
 
-            let fixtureRoot = URL(fileURLWithPath: "/Users/mac/Documents/Codex/2026-10-19/zhe/work/acceptance-round2/inputs")
+            let fixtureRoot = ProbeFixtures.inputs
             let videoURL = fixtureRoot.appendingPathComponent("07-视频样本.mp4")
             let video = await FileMetadataReader.read(videoURL)
             expect(video.isVideo, "真实视频被识别为含画面")
