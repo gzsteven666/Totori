@@ -409,35 +409,31 @@ enum Engine {
             return
         }
 
-        // sips 能写的格式（AVIF/BMP/GIF/JP2/ICNS）交给系统图像管线
-        if ["avif", "bmp", "gif", "jp2", "icns"].contains(ext) {
-            guard let sips = Shell.which("sips") else {
-                throw ConversionError.toolMissing("系统缺少 sips")
-            }
-            let quality = Int(options.jpegQuality * 100)
-            let result = try Shell.run(sips, ["-s", "format", ext,
-                                              "-s", "formatOptions", "\(quality)",
-                                              source.path, "--out", destination.path])
-            guard result.status == 0, FileManager.default.fileExists(atPath: destination.path) else {
-                throw ConversionError.failed("输出 \(ext.uppercased()) 失败：\(result.stderr.suffix(200))")
-            }
-            progress(1.0)
-            return
-        }
-
         let type: UTType
         switch ext {
         case "pdf":  type = .pdf
         case "jpg", "jpeg": type = .jpeg
         case "heic": type = .heic
         case "tiff": type = .tiff
+        // 这些格式 ImageIO 都能直接写出，和 PNG/JPEG 走同一条管线，才会遵守
+        // 「清除元数据」「缩边」选项并烘焙 EXIF 方向（旧的 sips 分支全都忽略，
+        // 且 sips 在新系统上写不出 JP2、AVIF 会丢失方向）。
+        case "avif": type = UTType("public.avif") ?? .png
+        case "bmp":  type = .bmp
+        case "gif":  type = .gif
+        case "jp2":  type = UTType("public.jpeg-2000") ?? .png
         default:     type = UTType(filenameExtension: ext) ?? .png
         }
 
-        let working = downscaled(imageSource, maxSide: options.maxSide) ?? imageSource
+        // AVIF 不保留 EXIF 方向标记、JP2 编码器不接受“从数据源直接复制”，
+        // 这两种格式先烘焙方向，再写入解码后的像素。
+        let pixelOnly = ["avif", "jp2"].contains(ext)
+        let working = downscaled(imageSource, maxSide: options.maxSide)
+            ?? (pixelOnly ? orientationBaked(imageSource) : nil) ?? imageSource
         try ConversionCancellation.current?.check()
         try writeImage(imageSource: working, to: destination, type: type,
-                       quality: options.jpegQuality, flattened: stripMetadata)
+                       quality: options.jpegQuality, flattened: stripMetadata,
+                       decodedPixels: pixelOnly)
         progress(1.0)
     }
 
@@ -474,7 +470,8 @@ enum Engine {
                                    to url: URL,
                                    type: UTType,
                                    quality: Double,
-                                   flattened: Bool) throws {
+                                   flattened: Bool,
+                                   decodedPixels: Bool = false) throws {
         try ConversionCancellation.current?.check()
         let options: [CFString: Any] = [
             kCGImageDestinationLossyCompressionQuality: quality,
@@ -486,6 +483,8 @@ enum Engine {
         }
         if flattened, let clean = flattenedImage(imageSource) {
             CGImageDestinationAddImage(destination, clean, options as CFDictionary)
+        } else if decodedPixels, let image = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) {
+            CGImageDestinationAddImage(destination, image, options as CFDictionary)
         } else {
             let count = type == .pdf ? 1 : CGImageSourceGetCount(imageSource)
             for index in 0..<count {

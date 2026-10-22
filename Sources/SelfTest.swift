@@ -315,6 +315,39 @@ enum SelfTest {
             print("\(pad("竖图 → WebP 方向")) \(ok ? "✓" : "✕")        \(detail)")
         }
 
+        // AVIF/BMP/GIF/JP2 与 PNG/JPEG 走同一条管线：竖图方向正确、遵守清元数据与缩边、JP2 能写出
+        do {
+            let rotated = root.appendingPathComponent("rotated.jpg")
+            var problems: [String] = []
+            func displayed(_ url: URL) -> (Int, Int)? {
+                guard let s = CGImageSourceCreateWithURL(url as CFURL, nil),
+                      let t = CGImageSourceCreateThumbnailAtIndex(s, 0, [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceCreateThumbnailWithTransform: true,
+                        kCGImageSourceThumbnailMaxPixelSize: 1000] as CFDictionary) else { return nil }
+                return (t.width, t.height)
+            }
+            if makeRotatedJPEG(at: rotated) {
+                for ext in ["avif", "bmp", "gif", "jp2"] {
+                    guard let format = FormatCatalog.images.first(where: { $0.ext == ext }) else { continue }
+                    do {
+                        let plain = try Engine.convert(source: rotated, format: format, to: outDir) { _ in }
+                        if let size = displayed(plain), size != (100, 200) { problems.append("\(ext) 方向 \(size)") }
+                        let stripped = try Engine.convert(source: rotated, format: format, to: outDir,
+                                                          stripMetadata: true) { _ in }
+                        if let size = displayed(stripped), size != (100, 200) { problems.append("\(ext) 清元数据后方向 \(size)") }
+                        var small = CompressionOptions.none
+                        small.maxSide = 50
+                        let scaled = try Engine.convert(source: rotated, format: format, to: outDir,
+                                                        options: small) { _ in }
+                        if let size = displayed(scaled), max(size.0, size.1) > 50 { problems.append("\(ext) 未缩边 \(size)") }
+                    } catch { problems.append("\(ext)：\((error as? LocalizedError)?.errorDescription ?? "\(error)")") }
+                }
+            } else { problems.append("无法生成方向样本") }
+            if problems.isEmpty { pass += 1 } else { fail += 1; failures.append("AVIF/BMP/GIF/JP2 选项：\(problems.joined(separator: "；"))") }
+            print("\(pad("AVIF/BMP/GIF/JP2 选项")) \(problems.isEmpty ? "✓" : "✕")        \(problems.isEmpty ? "方向、清元数据、缩边均生效" : problems.joined(separator: "；"))")
+        }
+
         // 清除元数据时重绘像素，必须沿用原图色彩空间（如 Display P3），不能压成 DeviceRGB
         do {
             let p3 = root.appendingPathComponent("p3.png")
