@@ -517,6 +517,46 @@ enum SelfTest {
             print("\(pad("无扩展名文件识别")) \(problems.isEmpty ? "✓" : "✕")        \(problems.isEmpty ? "按文件头识别类型并成功转换" : problems.joined(separator: "；"))")
         }
 
+        // 字幕：mkv 保留、mp4/mov 转 mov_text、webm 转 WebVTT；avi 不保留但不能因此失败
+        if let ffmpeg = Shell.which("ffmpeg"), let ffprobe = Shell.which("ffprobe") {
+            var problems: [String] = []
+            let table: [(String, [String], [String])] = [
+                ("mkv", ["subrip", "mov_text", "hdmv_pgs_subtitle"], ["copy", "srt", "copy"]),
+                ("mp4", ["subrip", "hdmv_pgs_subtitle", "ass"], ["mov_text", "mov_text"]),
+                ("webm", ["subrip", "dvd_subtitle"], ["webvtt"]),
+                ("avi", ["subrip"], []),
+            ]
+            for (container, codecs, expected) in table {
+                let args = Engine.subtitleArguments(container: container, codecs: codecs)
+                let got = args.enumerated().filter { $0.offset % 4 == 3 }.map(\.element)
+                if got != expected { problems.append("\(container) 字幕映射 \(got)") }
+            }
+            let srt = root.appendingPathComponent("sub.srt")
+            let subbed = root.appendingPathComponent("subbed.mkv")
+            try? "1\n00:00:00,000 --> 00:00:00,800\n字幕测试\n".write(to: srt, atomically: true, encoding: .utf8)
+            let made = (try? Shell.run(ffmpeg, [
+                "-hide_banner", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=15", "-i", srt.path,
+                "-t", "1", "-pix_fmt", "yuv420p", "-c:v", "libx264", "-c:s", "srt", subbed.path,
+            ]).status == 0) ?? false
+            func subtitleStreams(_ url: URL) -> Int {
+                let r = try? Shell.run(ffprobe, ["-v", "error", "-select_streams", "s", "-show_entries",
+                                                 "stream=index", "-of", "csv=p=0", url.path], captureOutput: true)
+                return r?.stdout.split(separator: "\n").count ?? -1
+            }
+            if made && subtitleStreams(subbed) == 1 {
+                for (ext, want) in [("mkv", 1), ("mp4", 1), ("webm", 1), ("avi", 0)] {
+                    guard let format = FormatCatalog.medias.first(where: { $0.ext == ext }) else { continue }
+                    do {
+                        let out = try Engine.convert(source: subbed, format: format, to: outDir) { _ in }
+                        let count = subtitleStreams(out)
+                        if count != want { problems.append("\(ext) 字幕轨 \(count)/\(want)") }
+                    } catch { problems.append("\(ext)：\((error as? LocalizedError)?.errorDescription ?? "\(error)")") }
+                }
+            } else { problems.append("无法生成字幕样本") }
+            if problems.isEmpty { pass += 1 } else { fail += 1; failures.append("字幕轨：\(problems.joined(separator: "；"))") }
+            print("\(pad("字幕轨保留")) \(problems.isEmpty ? "✓" : "✕")        \(problems.isEmpty ? "mkv / mp4 / webm 保留，avi 不保留且不失败" : problems.joined(separator: "；"))")
+        }
+
         // 清除元数据时重绘像素，必须沿用原图色彩空间（如 Display P3），不能压成 DeviceRGB
         do {
             let p3 = root.appendingPathComponent("p3.png")

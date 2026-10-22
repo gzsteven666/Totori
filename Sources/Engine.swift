@@ -801,24 +801,34 @@ enum Engine {
             throw ConversionError.unsupported("暂不支持输出为 \(format.name)")
         }
 
-        args += ["-progress", "pipe:1", "-nostats", destination.path]
+        let subtitles = subtitleArguments(container: format.ext, codecs: try probeSubtitleCodecs(source))
+        let tail = ["-progress", "pipe:1", "-nostats", destination.path]
 
         // 只要输出时间还在推进就一直等；ffmpeg 即使卡住也会周期性打印进度行，
         // 所以仅把 out_time_us 变化算作"有进展"，长视频不再被固定上限误杀。
-        let lastOutTime = NSLock()
-        var lastValue = ""
-        let result = try Shell.run(ffmpeg, args, idleTimeout: mediaStallTimeout, isProgress: { line in
-            guard line.hasPrefix("out_time_us=") else { return false }
-            lastOutTime.lock(); defer { lastOutTime.unlock() }
-            let value = String(line.dropFirst("out_time_us=".count))
-            defer { lastValue = value }
-            return value != lastValue && value != "N/A"
-        }) { line in
-            guard duration > 0, line.hasPrefix("out_time_us=") else { return }
-            let raw = line.dropFirst("out_time_us=".count)
-            if let us = Double(raw) {
-                progress(min(0.99, max(0.02, us / (duration * 1_000_000))))
+        func run(_ arguments: [String]) throws -> Shell.Result {
+            let lastOutTime = NSLock()
+            var lastValue = ""
+            return try Shell.run(ffmpeg, arguments, idleTimeout: mediaStallTimeout, isProgress: { line in
+                guard line.hasPrefix("out_time_us=") else { return false }
+                lastOutTime.lock(); defer { lastOutTime.unlock() }
+                let value = String(line.dropFirst("out_time_us=".count))
+                defer { lastValue = value }
+                return value != lastValue && value != "N/A"
+            }) { line in
+                guard duration > 0, line.hasPrefix("out_time_us=") else { return }
+                let raw = line.dropFirst("out_time_us=".count)
+                if let us = Double(raw) {
+                    progress(min(0.99, max(0.02, us / (duration * 1_000_000))))
+                }
             }
+        }
+
+        var result = try run(args + subtitles + tail)
+        if !subtitles.isEmpty, !result.timedOut, result.status != 0 {
+            // 字幕转换失败不应拖垮整个转码：去掉字幕轨重试一次，和以前的行为一致。
+            try? FileManager.default.removeItem(at: destination)
+            result = try run(args + tail)
         }
 
         if result.timedOut {
@@ -883,6 +893,48 @@ enum Engine {
             }
         }
         return probe
+    }
+
+    private static func probeSubtitleCodecs(_ url: URL) throws -> [String] {
+        guard let ffprobe = Shell.which("ffprobe") else { return [] }
+        do {
+            let result = try Shell.run(ffprobe, ["-v", "error", "-select_streams", "s",
+                                                 "-show_entries", "stream=codec_name", "-of", "csv=p=0", url.path],
+                                       captureOutput: true)
+            guard result.status == 0 else { return [] }
+            return result.stdout.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return []
+        }
+    }
+
+    /// 各容器能保留的字幕：MKV 几乎全部可原样复制（mov_text 转 SRT）；
+    /// MP4 / MOV 只能放 mov_text，文字字幕转换后保留、图片字幕（PGS、DVD）无法放入而跳过；
+    /// WebM 只能放 WebVTT；AVI / WMV 等不保留字幕。`codecs` 按源文件字幕流的顺序给出。
+    static func subtitleArguments(container: String, codecs: [String]) -> [String] {
+        let text: Set<String> = ["subrip", "srt", "ass", "ssa", "mov_text", "webvtt", "text"]
+        var result: [String] = []
+        var output = 0
+        for (index, codec) in codecs.enumerated() {
+            let target: String?
+            switch container {
+            case "mkv":
+                target = (codec == "mov_text" || codec == "text") ? "srt" : "copy"
+            case "mp4", "mov":
+                target = text.contains(codec) ? "mov_text" : nil
+            case "webm":
+                target = text.contains(codec) ? "webvtt" : nil
+            default:
+                target = nil
+            }
+            guard let target else { continue }
+            result += ["-map", "0:s:\(index)", "-c:s:\(output)", target]
+            output += 1
+        }
+        return result
     }
 
     /// 按分辨率与帧率估算视频码率：`bitsPerPixel` 取自旧的固定值（1080p30 约 6M），
