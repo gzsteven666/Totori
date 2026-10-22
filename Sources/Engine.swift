@@ -533,17 +533,17 @@ enum Engine {
         let source = pixels.colorSpace
         let usable = source.flatMap { $0.model == .rgb ? $0 : nil }
         let fallback = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
-        guard let context = CGContext(
-            data: nil, width: width, height: height,
-            bitsPerComponent: 8, bytesPerRow: 0,
-            space: usable ?? fallback,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) ?? CGContext(
-            data: nil, width: width, height: height,
-            bitsPerComponent: 8, bytesPerRow: 0,
-            space: fallback,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
+        // 源图超过 8 位（16-bit PNG/TIFF、浮点 HDR）时用 16 位画布，否则渐变会出现色带；
+        // 浮点源也落到 16 位整数，能保留的精度比 8 位多得多，且各输出格式都可写。
+        let depth = pixels.bitsPerComponent > 8 ? 16 : 8
+        func makeContext(space: CGColorSpace, bits: Int) -> CGContext? {
+            CGContext(data: nil, width: width, height: height,
+                      bitsPerComponent: bits, bytesPerRow: 0, space: space,
+                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        }
+        guard let context = makeContext(space: usable ?? fallback, bits: depth)
+            ?? makeContext(space: fallback, bits: depth)
+            ?? makeContext(space: fallback, bits: 8) else { return nil }
         context.draw(pixels, in: CGRect(x: 0, y: 0, width: width, height: height))
         return context.makeImage()
     }

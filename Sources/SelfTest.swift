@@ -536,6 +536,24 @@ enum SelfTest {
             print("\(pad("清元数据保留色域")) \(ok ? "✓" : "✕")        \(detail)")
         }
 
+        // 16 位图清除元数据后仍应是 16 位，不能被压成 8 位
+        do {
+            let deep = root.appendingPathComponent("deep16.png")
+            var detail = "无法生成 16 位样本"
+            var ok = false
+            if makeDeepPNG(at: deep), let png = FormatCatalog.images.first(where: { $0.ext == "png" }) {
+                do {
+                    let out = try Engine.convert(source: deep, format: png, to: outDir, stripMetadata: true) { _ in }
+                    let bits = CGImageSourceCreateWithURL(out as CFURL, nil)
+                        .flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }?.bitsPerComponent ?? 0
+                    ok = bits == 16
+                    detail = "输出位深：\(bits)-bit"
+                } catch { detail = "\(error)" }
+            }
+            if ok { pass += 1 } else { fail += 1; failures.append("清元数据后位深：\(detail)") }
+            print("\(pad("清元数据保留 16 位")) \(ok ? "✓" : "✕")        \(detail)")
+        }
+
         // 长任务超时：无进展会被中止，持续有进展则不受总时长限制
         do {
             let began = Date()
@@ -649,6 +667,23 @@ enum SelfTest {
               let destination = CGImageDestinationCreateWithURL(
                 url as CFURL, UTType.png.identifier as CFString, 1, nil
               ) else { return false }
+        CGImageDestinationAddImage(destination, image, nil)
+        return CGImageDestinationFinalize(destination)
+    }
+
+    /// 16 位/通道的渐变 PNG，用来检查重绘是否把位深压成 8 位。
+    private static func makeDeepPNG(at url: URL) -> Bool {
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: 256, height: 16, bitsPerComponent: 16, bytesPerRow: 0,
+                                      space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return false }
+        for x in 0..<256 {
+            context.setFillColor(CGColor(colorSpace: space, components: [CGFloat(x) / 255, 0.2, 0.6, 1])!)
+            context.fill(CGRect(x: x, y: 0, width: 1, height: 16))
+        }
+        guard let image = context.makeImage(),
+              let destination = CGImageDestinationCreateWithURL(
+                url as CFURL, UTType.png.identifier as CFString, 1, nil) else { return false }
         CGImageDestinationAddImage(destination, image, nil)
         return CGImageDestinationFinalize(destination)
     }
