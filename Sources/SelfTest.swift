@@ -427,6 +427,55 @@ enum SelfTest {
             print("\(pad("文档引擎配置损坏恢复")) \(ok ? "✓" : "✕")        \(detail)")
         }
 
+        // 同批文档一次启动转换：命中暂存的文件不再单独启动；同名文件与被改动的文件走单独流程
+        if FileManager.default.isExecutableFile(atPath: "/Applications/LibreOffice.app/Contents/MacOS/soffice")
+            || Shell.which("soffice") != nil,
+           let textutil = Shell.which("textutil"),
+           let pdf = FormatCatalog.documents.first(where: { $0.ext == "pdf" }) {
+            let batchRoot = root.appendingPathComponent("doc-batch")
+            var detail = ""
+            var ok = false
+            do {
+                var sources: [URL] = []
+                for (folder, name) in [("a", "one"), ("a", "two"), ("a", "three"), ("b", "dup"), ("c", "dup")] {
+                    let dir = batchRoot.appendingPathComponent(folder)
+                    try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+                    let text = dir.appendingPathComponent("\(name).txt")
+                    try "批量文档 \(folder)/\(name)\n".write(to: text, atomically: true, encoding: .utf8)
+                    let docx = dir.appendingPathComponent("\(name).docx")
+                    _ = try Shell.run(textutil, ["-convert", "docx", "-output", docx.path, text.path])
+                    sources.append(docx)
+                }
+                let target = batchRoot.appendingPathComponent("out")
+                let before = DocumentPrefetch.hits
+                ConversionService.prefetchDocuments(sources: sources, format: pdf, options: .none)
+                var outputs: [URL] = []
+                for source in sources {
+                    outputs.append(try ConversionService.convert(source: source, format: pdf, to: target) { _ in })
+                }
+                let batchHits = DocumentPrefetch.hits - before
+                ConversionService.clearPrefetchedDocuments()
+
+                // 预转换之后源文件被改动：该文件的暂存结果必须作废
+                let pair = Array(sources.prefix(2))
+                let beforeStale = DocumentPrefetch.hits
+                ConversionService.prefetchDocuments(sources: pair, format: pdf, options: .none)
+                let text = pair[0].deletingPathExtension().appendingPathExtension("txt")
+                try "改过的内容，长度也不同\n".write(to: text, atomically: true, encoding: .utf8)
+                try fm.removeItem(at: pair[0])
+                _ = try Shell.run(textutil, ["-convert", "docx", "-output", pair[0].path, text.path])
+                for source in pair { _ = try ConversionService.convert(source: source, format: pdf, to: target) { _ in } }
+                let staleHits = DocumentPrefetch.hits - beforeStale
+                ConversionService.clearPrefetchedDocuments()
+
+                let allExist = outputs.allSatisfy { Engine.fileSize($0) > 100 }
+                ok = batchHits == 3 && allExist && staleHits == 1
+                detail = "命中 \(batchHits)/3（同名 2 个单独转换），改动后命中 \(staleHits)/1，输出 \(outputs.count) 个"
+            } catch { detail = "\((error as? LocalizedError)?.errorDescription ?? "\(error)")" }
+            if ok { pass += 1 } else { fail += 1; failures.append("文档批量预转换：\(detail)") }
+            print("\(pad("文档批量一次启动")) \(ok ? "✓" : "✕")        \(detail)")
+        }
+
         // 清除元数据时重绘像素，必须沿用原图色彩空间（如 Display P3），不能压成 DeviceRGB
         do {
             let p3 = root.appendingPathComponent("p3.png")

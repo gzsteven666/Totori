@@ -539,7 +539,7 @@ enum Engine {
     // MARK: 文档
 
     /// 走 LibreOffice 的格式过滤器名
-    private static func libreOfficeFilter(for ext: String) -> String {
+    static func libreOfficeFilter(for ext: String) -> String {
         switch ext {
         case "pdf":  return "pdf"
         case "html": return "html"
@@ -553,6 +553,15 @@ enum Engine {
         }
     }
 
+    /// 分发版只用包内 LibreOffice；开发构建可退回 /Applications 里的安装。
+    static func resolveSoffice() -> String? {
+        if let bundled = Shell.which("soffice") { return bundled }
+        let portable = FileManager.default.fileExists(atPath: Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Resources/RuntimeManifest.json").path)
+        let system = "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+        return !portable && FileManager.default.isExecutableFile(atPath: system) ? system : nil
+    }
+
     private static func convertDocument(source: URL,
                                         ext: String,
                                         destination: URL,
@@ -561,11 +570,7 @@ enum Engine {
         progress(0.05)
 
         // 1) 优先 LibreOffice：Office/ODF/Pages/EPUB 都能吃，排版最接近原版
-        if let soffice = Shell.which("soffice")
-            ?? (!FileManager.default.fileExists(atPath: Bundle.main.bundleURL
-                    .appendingPathComponent("Contents/Resources/RuntimeManifest.json").path)
-                && FileManager.default.isExecutableFile(atPath: "/Applications/LibreOffice.app/Contents/MacOS/soffice")
-                ? "/Applications/LibreOffice.app/Contents/MacOS/soffice" : nil) {
+        if let soffice = resolveSoffice() {
             if try libreOfficeConvert(soffice: soffice,
                                       source: source,
                                       filter: source.pathExtension.lowercased() == "svg"
@@ -667,27 +672,41 @@ enum Engine {
             return true
         }
 
-        // 优先复用 Totori 专用的配置目录：每次新建配置要多花约一半时间（见基准）。
-        // 它与用户自己的 LibreOffice 配置互不相干；同一时刻只允许一个转换占用，
-        // 占不到锁就退回一次性配置目录。
-        if sharedProfileLock.`try`() {
-            defer { sharedProfileLock.unlock() }
-            let existed = FileManager.default.fileExists(atPath: sharedProfile.path)
-            try? FileManager.default.createDirectory(at: sharedProfile.deletingLastPathComponent(),
-                                                     withIntermediateDirectories: true)
-            if try attempt(profile: sharedProfile) { progress(1.0); return true }
-            guard existed else { return false }
-            // 复用的配置可能被上次被取消的进程弄坏：用干净配置再试一次，成功就丢弃旧配置。
-            try? FileManager.default.removeItem(at: staging.appendingPathComponent("profile"))
-            if try attempt(profile: staging.appendingPathComponent("profile", isDirectory: true)) {
-                try? FileManager.default.removeItem(at: sharedProfile)
-                progress(1.0)
-                return true
-            }
-            return false
-        }
-        if try attempt(profile: staging.appendingPathComponent("profile", isDirectory: true)) {
+        // 命中同批预转换的结果就直接取用，不再启动 LibreOffice。
+        let fitsWidth = layout == .fitWidth && destination.pathExtension.lowercased() == "pdf"
+            && SpreadsheetPDFLayout.supports(source)
+        if !fitsWidth,
+           let cached = DocumentPrefetch.take(source: source, ext: destination.pathExtension, filter: filter) {
+            try? FileManager.default.removeItem(at: destination)
+            try FileManager.default.copyItem(at: cached, to: destination)
+            try? FileManager.default.removeItem(at: cached)
             progress(1.0)
+            return true
+        }
+
+        if try withSharedProfile(fallback: staging.appendingPathComponent("profile", isDirectory: true),
+                                 attempt) {
+            progress(1.0)
+            return true
+        }
+        return false
+    }
+
+    /// 优先复用 Totori 专用的配置目录：每次新建配置要多花约一半时间（见基准）。
+    /// 它与用户自己的 LibreOffice 配置互不相干；同一时刻只允许一个转换占用，
+    /// 占不到锁就退回一次性配置目录。`attempt` 成功产出文件返回 true。
+    static func withSharedProfile(fallback: URL, _ attempt: (URL) throws -> Bool) throws -> Bool {
+        guard sharedProfileLock.`try`() else { return try attempt(fallback) }
+        defer { sharedProfileLock.unlock() }
+        let existed = FileManager.default.fileExists(atPath: sharedProfile.path)
+        try? FileManager.default.createDirectory(at: sharedProfile.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        if try attempt(sharedProfile) { return true }
+        guard existed else { return false }
+        // 复用的配置可能被上次被取消的进程弄坏：用干净配置再试一次，成功就丢弃旧配置。
+        try? FileManager.default.removeItem(at: fallback)
+        if try attempt(fallback) {
+            try? FileManager.default.removeItem(at: sharedProfile)
             return true
         }
         return false
@@ -895,7 +914,7 @@ enum Engine {
 
     // MARK: 工具
 
-    private static func fileSize(_ url: URL) -> Int64 {
+    static func fileSize(_ url: URL) -> Int64 {
         let values = try? url.resourceValues(forKeys: [.fileSizeKey])
         return Int64(values?.fileSize ?? 0)
     }

@@ -244,6 +244,10 @@ final class AppModel: ObservableObject {
         for file in jobs { jobStates[file.url] = .queued }
 
         Task.detached(priority: .userInitiated) {
+            // 同批文档一次启动 LibreOffice 全部转好，下面逐个转换时直接取用。
+            ConversionService.prefetchDocuments(sources: jobs.map(\.url), format: plan.format,
+                                                options: plan.options, cancellation: cancellation)
+            defer { ConversionService.clearPrefetchedDocuments() }
             for (index, file) in jobs.enumerated() {
                 if cancellation.isCancelled {
                     let skipped = jobs[index...].map { ConversionResult(source: $0.url, output: nil, error: nil, cancelled: true) }

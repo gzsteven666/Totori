@@ -2,7 +2,7 @@ import Foundation
 
 /// 主窗口与滚轮共用串行出口，包含同名避让到写出完成的整个区间。
 enum ConversionService {
-    private static let queue = DispatchQueue(label: "totori.conversion-service", qos: .userInitiated)
+    static let queue = DispatchQueue(label: "totori.conversion-service", qos: .userInitiated)
 
     static func convert(source: URL, format: OutputFormat, to directory: URL,
                         stripMetadata: Bool = false,

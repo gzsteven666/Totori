@@ -63,6 +63,11 @@ enum ConversionRunner {
                 ProgressCenter.shared.begin(title: "正在转换 → \(format.name)", files: urls.count,
                                             onCancel: { cancellation.cancel() })
             }
+            if !isCompression {
+                ConversionService.prefetchDocuments(sources: urls, format: format,
+                                                    options: optionsSnapshot, cancellation: cancellation)
+            }
+            defer { ConversionService.clearPrefetchedDocuments() }
             for (index, url) in urls.enumerated() {
                 if cancellation.isCancelled {
                     cancelledCount += urls.count - index
