@@ -591,6 +591,25 @@ enum SelfTest {
             print("\(pad("跨队列并发同名输出")) \(ok ? "✓" : "✕")        \(detail)")
         }
 
+        // 日志轮转：超过上限就转存为 .1，旧的转存被覆盖，未超限不动
+        do {
+            let log = root.appendingPathComponent("diag.log")
+            let archive = log.appendingPathExtension("1")
+            try? Data(repeating: 0x61, count: 2_000).write(to: log)
+            DiagLog.rotateIfNeeded(log, limit: 5_000)
+            let untouched = fm.fileExists(atPath: log.path) && !fm.fileExists(atPath: archive.path)
+            try? Data(repeating: 0x62, count: 6_000).write(to: log)
+            DiagLog.rotateIfNeeded(log, limit: 5_000)
+            let rotated = !fm.fileExists(atPath: log.path)
+                && ((try? Data(contentsOf: archive).count) ?? 0) == 6_000
+            try? Data(repeating: 0x63, count: 7_000).write(to: log)
+            DiagLog.rotateIfNeeded(log, limit: 5_000)
+            let replaced = ((try? Data(contentsOf: archive).count) ?? 0) == 7_000
+            let ok = untouched && rotated && replaced
+            if ok { pass += 1 } else { fail += 1; failures.append("日志轮转：未超限=\(untouched) 转存=\(rotated) 覆盖旧转存=\(replaced)") }
+            print("\(pad("日志轮转")) \(ok ? "✓" : "✕")        超限转存为 .1 并覆盖旧转存")
+        }
+
         // 清除元数据时重绘像素，必须沿用原图色彩空间（如 Display P3），不能压成 DeviceRGB
         do {
             let p3 = root.appendingPathComponent("p3.png")
