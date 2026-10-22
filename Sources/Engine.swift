@@ -366,9 +366,27 @@ enum Engine {
             }
             try cancellation?.check()
             // 发布后即为完成的文件；后到的取消保留这一结果，在下个文件前停止。
-            try FileManager.default.moveItem(at: pending, to: destination)
-            return destination
+            return try publish(pending, as: destination)
         }
+    }
+
+    private static let publishLock = NSLock()
+
+    /// 原子占用最终文件名并移入：不同队列的转换可能同时完成，选名与移动必须在同一把锁内，
+    /// 否则两个同名任务会选到同一个名字；名字已被占用时依次尝试 "名字 2.扩展名"、"名字 3.扩展名"……
+    private static func publish(_ pending: URL, as preferred: URL) throws -> URL {
+        publishLock.lock()
+        defer { publishLock.unlock() }
+        var target = preferred
+        let base = preferred.deletingPathExtension().lastPathComponent
+        var index = 2
+        while FileManager.default.fileExists(atPath: target.path) {
+            target = preferred.deletingLastPathComponent()
+                .appendingPathComponent("\(base) \(index)").appendingPathExtension(preferred.pathExtension)
+            index += 1
+        }
+        try FileManager.default.moveItem(at: pending, to: target)
+        return target
     }
 
     /// 06-归档.tar → 06-归档.tar.zip

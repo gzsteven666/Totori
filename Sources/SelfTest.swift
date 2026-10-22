@@ -557,6 +557,40 @@ enum SelfTest {
             print("\(pad("字幕轨保留")) \(problems.isEmpty ? "✓" : "✕")        \(problems.isEmpty ? "mkv / mp4 / webm 保留，avi 不保留且不失败" : problems.joined(separator: "；"))")
         }
 
+        // 不同队列（图片 / 文档）同时写出同名 PDF：输出名必须各不相同，且全部成功
+        if let png = fixtures["png"], let txt = fixtures["txt"],
+           let pdf = FormatCatalog.documents.first(where: { $0.ext == "pdf" }),
+           FileManager.default.isExecutableFile(atPath: "/Applications/LibreOffice.app/Contents/MacOS/soffice")
+            || Shell.which("soffice") != nil {
+            let dir = root.appendingPathComponent("race")
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            let lock = NSLock()
+            var outputs: [URL] = []
+            var errors: [String] = []
+            let group = DispatchGroup()
+            for _ in 0..<4 {
+                for source in [png, txt] {
+                    group.enter()
+                    DispatchQueue.global().async {
+                        do {
+                            let url = try ConversionService.convert(source: source, format: pdf, to: dir) { _ in }
+                            lock.lock(); outputs.append(url); lock.unlock()
+                        } catch {
+                            lock.lock(); errors.append("\(error)"); lock.unlock()
+                        }
+                        group.leave()
+                    }
+                }
+            }
+            group.wait()
+            let distinct = Set(outputs.map(\.lastPathComponent)).count
+            let onDisk = (try? fm.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".pdf") }.count) ?? 0
+            let ok = errors.isEmpty && outputs.count == 8 && distinct == 8 && onDisk == 8
+            let detail = ok ? "8 个并发同名输出全部成功且互不覆盖" : "成功 \(outputs.count)，不同名 \(distinct)，磁盘 \(onDisk)，错误 \(errors.prefix(1))"
+            if ok { pass += 1 } else { fail += 1; failures.append("并发同名输出：\(detail)") }
+            print("\(pad("跨队列并发同名输出")) \(ok ? "✓" : "✕")        \(detail)")
+        }
+
         // 清除元数据时重绘像素，必须沿用原图色彩空间（如 Display P3），不能压成 DeviceRGB
         do {
             let p3 = root.appendingPathComponent("p3.png")
