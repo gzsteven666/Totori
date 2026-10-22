@@ -99,7 +99,7 @@ enum SelfTest {
         }
 
         // 2. 用例
-        let cases: [Case] = [
+        var cases: [Case] = [
             .init(label: "PNG → WebP",   source: "png",  formatKey: "webp", expectedExt: "webp"),
             .init(label: "JPG → HEIC",   source: "jpg",  formatKey: "heic", expectedExt: "heic"),
             .init(label: "HEIC → JPG",   source: "heic", formatKey: "jpg",  expectedExt: "jpg"),
@@ -112,13 +112,19 @@ enum SelfTest {
             .init(label: "SVG → PNG",    source: "svg",  formatKey: "png",  expectedExt: "png"),
             .init(label: "SVG → PDF",    source: "svg",  formatKey: "pdf",  expectedExt: "pdf"),
             .init(label: "TXT → MD",     source: "txt",  formatKey: "md",   expectedExt: "md"),
-            .init(label: "JPG → AVIF",   source: "jpg",  formatKey: "avif", expectedExt: "avif"),
             .init(label: "JPG → BMP",    source: "jpg",  formatKey: "bmp",  expectedExt: "bmp"),
             .init(label: "MP4 → MKV",    source: "mp4",  formatKey: "mkv",  expectedExt: "mkv"),
             .init(label: "MP4 → WMV",    source: "mp4",  formatKey: "wmv",  expectedExt: "wmv"),
             .init(label: "MP4 → FLAC",   source: "mp4",  formatKey: "flac", expectedExt: "flac"),
             .init(label: "MP4 → AIFF",   source: "mp4",  formatKey: "aiff", expectedExt: "aiff"),
         ]
+
+        // 系统 ImageIO 不能编码 AVIF 时（如部分虚拟机），不应作为失败；也不会向用户提供该选项
+        if FormatCatalog.canWriteImage("avif") {
+            cases.append(.init(label: "JPG → AVIF", source: "jpg", formatKey: "avif", expectedExt: "avif"))
+        } else {
+            print("JPG → AVIF                     跳过    当前系统不能编码 AVIF")
+        }
 
         var pass = 0
         var fail = 0
@@ -328,7 +334,7 @@ enum SelfTest {
                 return (t.width, t.height)
             }
             if makeRotatedJPEG(at: rotated) {
-                for ext in ["avif", "bmp", "gif", "jp2"] {
+                for ext in ["avif", "bmp", "gif", "jp2"] where FormatCatalog.canWriteImage(ext) {
                     guard let format = FormatCatalog.images.first(where: { $0.ext == ext }) else { continue }
                     do {
                         let plain = try Engine.convert(source: rotated, format: format, to: outDir) { _ in }
@@ -546,6 +552,7 @@ enum SelfTest {
                     && exts(["a.mp3"]).contains("flac")),
                 ("mp4 保留全部音视频格式", exts(["a.mp4"]) == Set(FormatCatalog.medias.map(\.ext))),
                 ("jpg 保留 JPEG 重新编码", exts(["a.jpg"]).contains("jpg")),
+                ("不可写的格式不提供", exts(["a.jpg"]).contains("avif") == FormatCatalog.canWriteImage("avif")),
                 ("多文件取交集", exts(["a.docx", "b.pdf"]) == ["html"]),
             ]
             let bad = checks.filter { !$0.1 }.map(\.0)

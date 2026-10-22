@@ -1,4 +1,6 @@
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 /// 输入文件的大类。决定可用输出格式集合。
 enum FileKind: String, CaseIterable {
@@ -107,6 +109,25 @@ enum FormatCatalog {
         "mp3", "m4a", "aac", "flac", "wav", "aiff", "aif", "ogg", "opus", "wma",
     ]
 
+    private static let writableImageTypes: Set<String> =
+        Set((CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? [])
+
+    /// 当前系统的 ImageIO 能否编码该图片格式。AVIF、JPEG 2000 等是否可写取决于系统版本与硬件
+    /// （例如 GitHub 托管的 macOS 虚拟机就不能编码 AVIF），不可写时不提供，避免必然失败。
+    /// WebP 由内置 cwebp 编码，不受 ImageIO 限制。
+    static func canWriteImage(_ ext: String) -> Bool {
+        let identifier: String
+        switch ext {
+        case "webp": return true
+        case "avif": identifier = "public.avif"
+        case "jp2":  identifier = "public.jpeg-2000"
+        default:
+            guard let type = UTType(filenameExtension: ext) else { return true }
+            identifier = type.identifier
+        }
+        return writableImageTypes.contains(identifier)
+    }
+
     /// 单个输入文件实际能产出的格式，顺序同目录。
     /// 同格式再输出（如 JPG→JPEG）保留，那是重新编码/压缩的用法；只有 PDF→PDF 没有意义。
     static func outputs(for source: URL) -> [OutputFormat] {
@@ -127,6 +148,8 @@ enum FormatCatalog {
         case .media:
             // 纯音频没有视频流，输出视频或 GIF 只会失败或得到无画面的文件
             candidates = audioExts.contains(ext) ? medias.filter { audioExts.contains($0.ext) } : medias
+        case .image:
+            candidates = images.filter { canWriteImage($0.ext) }
         default:
             candidates = formats(for: kind)
         }
