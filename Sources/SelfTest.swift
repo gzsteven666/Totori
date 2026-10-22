@@ -291,6 +291,49 @@ enum SelfTest {
             }
         }
 
+        // 竖拍照片（EXIF 方向 6）转 WebP：输出必须是转正后的竖图
+        if let sips = Shell.which("sips"),
+           let webp = FormatCatalog.images.first(where: { $0.ext == "webp" }) {
+            let rotated = root.appendingPathComponent("rotated.jpg")
+            var detail = "无法生成方向样本"
+            var ok = false
+            if makeRotatedJPEG(at: rotated) {
+                do {
+                    let out = try Engine.convert(source: rotated, format: webp, to: outDir) { _ in }
+                    let r = try Shell.run(sips, ["-g", "pixelWidth", "-g", "pixelHeight", out.path],
+                                          captureOutput: true)
+                    func value(_ key: String) -> Int? {
+                        r.stdout.split(separator: "\n").first { $0.contains(key) }
+                            .flatMap { Int($0.split(separator: ":").last?.trimmingCharacters(in: .whitespaces) ?? "") }
+                    }
+                    let w = value("pixelWidth") ?? 0, h = value("pixelHeight") ?? 0
+                    ok = w == 100 && h == 200
+                    detail = "\(w)×\(h)（期望 100×200）"
+                } catch { detail = "\(error)" }
+            }
+            if ok { pass += 1 } else { fail += 1; failures.append("WebP 方向：\(detail)") }
+            print("\(pad("竖图 → WebP 方向")) \(ok ? "✓" : "✕")        \(detail)")
+        }
+
+        // 长任务超时：无进展会被中止，持续有进展则不受总时长限制
+        do {
+            let began = Date()
+            let stalled = try Shell.run("/bin/sleep", ["30"], idleTimeout: 1)
+            let stalledElapsed = Date().timeIntervalSince(began)
+            let ok = stalled.timedOut && stalledElapsed < 10
+            if ok { pass += 1 } else { fail += 1; failures.append("无进展进程未在空闲超时内中止") }
+            print("\(pad("无进展超时中止")) \(ok ? "✓" : "✕")        \(String(format: "%.1f", stalledElapsed))s")
+
+            let busy = try Shell.run("/bin/sh", ["-c", "for i in 1 2 3 4; do echo tick; sleep 0.7; done"],
+                                     idleTimeout: 1)
+            let busyOK = !busy.timedOut && busy.status == 0
+            if busyOK { pass += 1 } else { fail += 1; failures.append("持续有进展的进程被空闲超时误杀") }
+            print("\(pad("持续进展不被误杀")) \(busyOK ? "✓" : "✕")        总耗时超过空闲阈值仍完成")
+        } catch {
+            fail += 1; failures.append("超时用例异常：\(error)")
+            print("\(pad("空闲超时")) ✕        \(error)")
+        }
+
         print("-------------------------------------------------------------")
         print("通过 \(pass) 项，失败 \(fail) 项")
         if !failures.isEmpty {
@@ -312,6 +355,25 @@ enum SelfTest {
         }
         while width < 30 { value += " "; width += 1 }
         return value
+    }
+
+    /// 200×100 像素、EXIF 方向 6 的 JPEG；正确显示应为 100×200 的竖图。
+    private static func makeRotatedJPEG(at url: URL) -> Bool {
+        guard let context = CGContext(
+            data: nil, width: 200, height: 100,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return false }
+        context.setFillColor(CGColor(red: 0.9, green: 0.2, blue: 0.2, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 200, height: 100))
+        guard let image = context.makeImage(),
+              let destination = CGImageDestinationCreateWithURL(
+                url as CFURL, UTType.jpeg.identifier as CFString, 1, nil
+              ) else { return false }
+        CGImageDestinationAddImage(destination, image,
+                                   [kCGImagePropertyOrientation: 6] as CFDictionary)
+        return CGImageDestinationFinalize(destination)
     }
 
     private static func makePNG(at url: URL) -> Bool {

@@ -47,6 +47,43 @@ enum Shell {
 
         func cancel() { stop(isTimeout: false) }
 
+        private var lastActivity = Date()
+        private var idleWork: DispatchWorkItem?
+
+        /// 记录一次"有进展"，长任务据此区分仍在工作与已卡死。
+        func touch() {
+            lock.lock()
+            lastActivity = Date()
+            lock.unlock()
+        }
+
+        /// 连续 `interval` 秒没有 touch 才终止进程；只要持续有进展，总耗时不设上限。
+        func scheduleIdleTimeout(_ interval: TimeInterval) {
+            guard interval > 0 else { return }
+            lock.lock()
+            lastActivity = Date()
+            lock.unlock()
+            armIdleCheck(after: interval, interval: interval)
+        }
+
+        private func armIdleCheck(after delay: TimeInterval, interval: TimeInterval) {
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.lock.lock()
+                let remaining = interval - Date().timeIntervalSince(self.lastActivity)
+                let done = self.finished
+                self.lock.unlock()
+                if done { return }
+                if remaining <= 0 { self.stop(isTimeout: true) }
+                else { self.armIdleCheck(after: remaining, interval: interval) }
+            }
+            lock.lock()
+            guard !finished else { lock.unlock(); return }
+            idleWork = work
+            lock.unlock()
+            DispatchQueue.global().asyncAfter(deadline: .now() + delay, execute: work)
+        }
+
         func scheduleTimeout(_ interval: TimeInterval) {
             guard interval > 0 else { return }
             let work = DispatchWorkItem { [weak self] in self?.stop(isTimeout: true) }
@@ -87,6 +124,7 @@ enum Shell {
             defer { lock.unlock() }
             finished = true
             timeoutWork?.cancel()
+            idleWork?.cancel()
             killWork?.cancel()
             return didTimeOut
         }
@@ -130,6 +168,8 @@ enum Shell {
                     stdoutTo file: URL? = nil,
                     captureOutput: Bool = false,
                     timeout: TimeInterval = 0,
+                    idleTimeout: TimeInterval = 0,
+                    isProgress: ((String) -> Bool)? = nil,
                     currentDirectory: URL? = nil,
                     cancellation: ConversionCancellation? = nil,
                     onStdoutLine: ((String) -> Void)? = nil) throws -> Result {
@@ -149,6 +189,7 @@ enum Shell {
             environment["FONTCONFIG_FILE"] = fonts.path
         }
         process.environment = environment
+        let control = ProcessControl(process)
 
         let errPipe = Pipe()
         process.standardError = errPipe
@@ -161,7 +202,8 @@ enum Shell {
             let handle = try FileHandle(forWritingTo: file)
             outHandle = handle
             process.standardOutput = handle
-        } else if onStdoutLine != nil || captureOutput {
+        } else if onStdoutLine != nil || captureOutput || idleTimeout > 0 {
+            // 空闲超时靠 stdout 活动判断进展，所以也需要接管输出管道。
             let outPipe = Pipe()
             stdoutReadHandle = outPipe.fileHandleForReading
             process.standardOutput = outPipe
@@ -181,7 +223,10 @@ enum Shell {
                     buffer.removeSubrange(buffer.startIndex...idx)
                 }
                 lock.unlock()
-                for line in lines { onStdoutLine?(line) }
+                for line in lines {
+                    if isProgress?(line) ?? true { control.touch() }
+                    onStdoutLine?(line)
+                }
             }
             stdoutCollector = { lock.lock(); defer { lock.unlock() }; return collected }
         }
@@ -197,7 +242,6 @@ enum Shell {
             errLock.unlock()
         }
 
-        let control = ProcessControl(process)
         let registration = cancellation?.registerProcess { control.cancel() }
         defer {
             cancellation?.unregisterProcess(registration)
@@ -209,6 +253,7 @@ enum Shell {
         try control.start()
         // 单文件上限保留；退出后取消超时工作，避免旧计时器误报。
         control.scheduleTimeout(timeout)
+        control.scheduleIdleTimeout(idleTimeout)
         process.waitUntilExit()
         let timedOut = control.finish()
         try cancellation?.check()
@@ -327,7 +372,9 @@ enum Engine {
             let temp = URL(fileURLWithPath: NSTemporaryDirectory())
                 .appendingPathComponent("tangerine-\(UUID().uuidString).png")
             defer { try? FileManager.default.removeItem(at: temp) }
-            let working = downscaled(imageSource, maxSide: options.maxSide) ?? imageSource
+            // cwebp 不读 PNG 里的 EXIF 方向标记，必须先把方向烘焙进像素，否则竖拍照片会横过来。
+            let working = downscaled(imageSource, maxSide: options.maxSide)
+                ?? orientationBaked(imageSource) ?? imageSource
             try ConversionCancellation.current?.check()
             try writeImage(imageSource: working, to: temp, type: .png,
                            quality: 1.0, flattened: stripMetadata)
@@ -371,6 +418,15 @@ enum Engine {
         try writeImage(imageSource: working, to: destination, type: type,
                        quality: options.jpegQuality, flattened: stripMetadata)
         progress(1.0)
+    }
+
+    /// EXIF 方向不是 1 时，返回方向已转正、像素尺寸不变的数据源；无需处理时返回 nil。
+    private static func orientationBaked(_ source: CGImageSource) -> CGImageSource? {
+        guard let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let orientation = props[kCGImagePropertyOrientation] as? UInt32, orientation != 1,
+              let width = props[kCGImagePropertyPixelWidth] as? Int,
+              let height = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
+        return downscaled(source, maxSide: CGFloat(max(width, height)))
     }
 
     /// 需要缩边时，先做一份缩略图数据源，后续流程不变
@@ -588,6 +644,9 @@ enum Engine {
 
     // MARK: 音视频
 
+    /// ffmpeg 连续这么多秒没有推进输出时间，就判定卡死并中止。
+    static let mediaStallTimeout: TimeInterval = 120
+
     private static func convertMedia(source: URL,
                                      format: OutputFormat,
                                      destination: URL,
@@ -642,7 +701,17 @@ enum Engine {
 
         args += ["-progress", "pipe:1", "-nostats", destination.path]
 
-        let result = try Shell.run(ffmpeg, args, timeout: 300) { line in
+        // 只要输出时间还在推进就一直等；ffmpeg 即使卡住也会周期性打印进度行，
+        // 所以仅把 out_time_us 变化算作"有进展"，长视频不再被固定上限误杀。
+        let lastOutTime = NSLock()
+        var lastValue = ""
+        let result = try Shell.run(ffmpeg, args, idleTimeout: mediaStallTimeout, isProgress: { line in
+            guard line.hasPrefix("out_time_us=") else { return false }
+            lastOutTime.lock(); defer { lastOutTime.unlock() }
+            let value = String(line.dropFirst("out_time_us=".count))
+            defer { lastValue = value }
+            return value != lastValue && value != "N/A"
+        }) { line in
             guard duration > 0, line.hasPrefix("out_time_us=") else { return }
             let raw = line.dropFirst("out_time_us=".count)
             if let us = Double(raw) {
@@ -652,7 +721,7 @@ enum Engine {
 
         if result.timedOut {
             try? FileManager.default.removeItem(at: destination)
-            throw ConversionError.failed("超过 5 分钟上限，已中止（原版同样是这个限制）")
+            throw ConversionError.failed("转码已 \(Int(mediaStallTimeout)) 秒没有进展，疑似卡住，已中止")
         }
         guard result.status == 0, FileManager.default.fileExists(atPath: destination.path) else {
             let tail = result.stderr.suffix(400)
