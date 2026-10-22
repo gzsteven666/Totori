@@ -65,18 +65,18 @@ open "Totori.app"               # 启动（菜单栏出现图标，同时打开�
 
 | 输入 | 可输出 | 实现 |
 | --- | --- | --- |
-| png / jpg / heic / tiff / bmp / gif / webp / avif | png / jpg / heic / tiff / webp / pdf | ImageIO（`CGImageDestination`），AVIF / BMP / GIF / JP2 同走这条管线，因此都遵守“清除元数据”和缩边选项并校正 EXIF 方向（GIF 保留多帧）；WebP 使用 `cwebp`（先把方向转进像素），按档位设置质量，保留原像素尺寸。清除元数据重绘时沿用原图的 RGB 色彩空间（如 Display P3），位深仍为 8-bit |
+| png / jpg / heic / tiff / bmp / gif / webp / avif | png / jpg / heic / tiff / webp / pdf | ImageIO（`CGImageDestination`），AVIF / BMP / GIF / JP2 同走这条管线，因此都遵守“清除元数据”和缩边选项并校正 EXIF 方向（GIF 保留多帧）；WebP 使用 `cwebp`（先把方向转进像素），按档位设置质量，保留原像素尺寸。清除元数据重绘时沿用原图的 RGB 色彩空间（如 Display P3），源图超过 8 位时用 16 位画布，不会被压成 8-bit |
 | doc / docx / rtf / html / txt / md / odt / pages / epub 等 | pdf / html / txt / rtf / docx / odt | LibreOffice headless 优先（`soffice --convert-to`），失败退 `cupsfilter`（PDF）或 `textutil`。演示文稿、电子表格和 PDF 只提供 PDF / HTML 输出（其余格式 LibreOffice 与 `textutil` 均无法产出）；csv / tsv 不提供 EPUB / Markdown。多文件取共同支持的格式 |
-| mp4 / mov / mkv / webm / avi / mp3 / flac / wav / m4a / ogg 等 | mp4 / mov / webm / gif / mp3 / m4a / wav | `ffmpeg`：视频走 `h264_videotoolbox`（硬编）、WebM 走 `libvpx-vp9`+`libopus`、音频 `libmp3lame`/`aac`/`pcm_s16le`，进度用 `-progress pipe:1` 实时解析。MP4 / MOV / MKV / WebM 保留全部音轨（AVI / WMV 取第一条），字幕轨暂不保留；未选质量档位时 MP4 / MOV 码率按分辨率与帧率估算（1080p30 约 6 Mbps，不超过源视频码率，限制在 0.5–50 Mbps）；连续 120 秒输出时间没有推进才判定卡死并中止，总时长不设上限；纯音频文件不提供视频与 GIF 输出 |
+| mp4 / mov / mkv / webm / avi / mp3 / flac / wav / m4a / ogg 等 | mp4 / mov / webm / gif / mp3 / m4a / wav | `ffmpeg`：视频走 `h264_videotoolbox`（硬编）、WebM 走 `libvpx-vp9`+`libopus`、音频 `libmp3lame`/`aac`/`pcm_s16le`，进度用 `-progress pipe:1` 实时解析。MP4 / MOV / MKV / WebM 保留全部音轨（AVI / WMV 取第一条），字幕轨：MKV 原样复制（mov_text 转 SRT），MP4 / MOV 转 mov_text，WebM 转 WebVTT，图片字幕（PGS、DVD）只在 MKV 保留，AVI / WMV 不保留；字幕转换失败时去掉字幕重试；未选质量档位时 MP4 / MOV 码率按分辨率与帧率估算（1080p30 约 6 Mbps，不超过源视频码率，限制在 0.5–50 Mbps）；连续 120 秒输出时间没有推进才判定卡死并中止，总时长不设上限；纯音频文件不提供视频与 GIF 输出 |
 | zip / tar / gz 等 | zip | `ditto -c -k --keepParent` 外层打包，原扩展名保留为 `.tar.zip` 等 |
 
 **已知行为**：同名文件自动加序号（`文件名 2.png`），不会覆盖；批量转换时按队列串行执行，进度条是整体进度。
 
-文档引擎复用专用配置目录 `~/Library/Application Support/Totori/lo-profile`（与你自己的 LibreOffice 配置无关），避免每个文件都重建配置；10 个 docx 转 PDF 实测 22.0 秒降到 11.9 秒（Apple M5，10 个约 1KB 的小文档，3 轮）。配置损坏导致转换失败时会用干净配置重试并自动重建。
+没有扩展名或扩展名不认识的文件按文件头识别类型（图片、音视频、PDF、RTF、压缩包等常见格式），输出名沿用原文件名。\n\n图片 / 压缩包、音视频、文档分别使用独立的串行队列，一个长视频不会再卡住后面的图片转换（40 秒 1080p 视频转换期间提交 8 张小图：完成时间 2.97 秒 → 0.52 秒，其中含 0.5 秒的提交延迟）；输出文件名在写出时原子占用，并发同名不会互相覆盖。\n\n文档引擎复用专用配置目录 `~/Library/Application Support/Totori/lo-profile`（与你自己的 LibreOffice 配置无关），避免每个文件都重建配置；10 个 docx 转 PDF 实测 22.0 秒降到 11.9 秒（Apple M5，10 个约 1KB 的小文档，3 轮）。配置损坏导致转换失败时会用干净配置重试并自动重建。
 
 ## 自检覆盖
 
-`--selftest` 生成合成样本，覆盖 36 项（文档类需要 LibreOffice 可用）：图片、文档和音视频转换，同名避让、标注、修剪、压缩、二维码、PDF 合并与拆页、竖图转 WebP / AVIF / JP2 的方向、Display P3 色域保留、多音轨保留、视频码率估算、输出格式过滤、子进程输出完整性、空闲超时、文档引擎配置损坏恢复等。本机 36 项通过；这不代表所有输入文件或所有系统版本均已验证。
+`--selftest` 生成合成样本，覆盖 41 项（文档类需要 LibreOffice 可用）：图片、文档和音视频转换，同名避让、标注、修剪、压缩、二维码、PDF 合并与拆页、竖图转 WebP / AVIF / JP2 的方向、Display P3 色域保留、多音轨保留、视频码率估算、输出格式过滤、子进程输出完整性、空闲超时、文档引擎配置损坏恢复等。本机 41 项通过；这不代表所有输入文件或所有系统版本均已验证。
 
 新增 `--probe-favorites`（常用顺序、呼出快照、更多分流）及 `--probe-shelf-enhancements`（浮窗反馈、紧凑模式与拖动状态）。
 
