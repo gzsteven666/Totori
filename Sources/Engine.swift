@@ -333,19 +333,31 @@ enum Engine {
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)
         let pending = staging.appendingPathComponent(destination.lastPathComponent)
 
+        // 没有扩展名（或扩展名不认识）的文件按文件头识别过类型；LibreOffice 等引擎仍要靠扩展名判断，
+        // 所以在暂存目录里放一个带正确扩展名的符号链接当输入。输出名仍沿用原文件名。
+        var input = source
+        let detected = FormatCatalog.effectiveExtension(of: source)
+        if FormatCatalog.kind(of: source) != .archive, FormatCatalog.kind(of: source) != .unknown,
+           source.pathExtension.lowercased() != detected {
+            let link = staging.appendingPathComponent("input.\(detected)")
+            if (try? FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)) != nil {
+                input = link
+            }
+        }
+
         return try ConversionCancellation.withCurrent(cancellation) {
             try cancellation?.check()
             // ImageIO/CoreImage 等同步系统调用只能在调用前后协作停止。
             // 子进程则继承本线程 token，取消时终止本次 Process。
             switch FormatCatalog.kind(of: source) {
             case .image:
-                try convertImage(source: source, ext: ext, destination: pending,
+                try convertImage(source: input, ext: ext, destination: pending,
                                  stripMetadata: stripMetadata, options: options, progress: progress)
             case .document:
-                try convertDocument(source: source, ext: ext, destination: pending,
+                try convertDocument(source: input, ext: ext, destination: pending,
                                     layout: options.spreadsheetPDFLayout, progress: progress)
             case .media:
-                try convertMedia(source: source, format: format, destination: pending,
+                try convertMedia(source: input, format: format, destination: pending,
                                  options: options, progress: progress)
             case .archive:
                 try convertArchive(source: source, destination: pending, progress: progress)

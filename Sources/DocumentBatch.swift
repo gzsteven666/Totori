@@ -74,7 +74,9 @@ enum DocumentPrefetch {
         let eligible = sources.filter { url in
             let lower = url.pathExtension.lowercased()
             let fitsWidth = layout == .fitWidth && outputExt == "pdf" && SpreadsheetPDFLayout.supports(url)
-            return FormatCatalog.kind(of: url) == .document && lower != "svg" && !fitsWidth
+            // 靠文件头识别、没有正确扩展名的文件交给单文件流程（那里会补上扩展名）
+            let knownExtension = lower == FormatCatalog.effectiveExtension(of: url)
+            return FormatCatalog.kind(of: url) == .document && lower != "svg" && !fitsWidth && knownExtension
                 && seen[url.deletingPathExtension().lastPathComponent.lowercased()] == 1
         }
         guard eligible.count >= 2 else { return }

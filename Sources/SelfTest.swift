@@ -482,6 +482,41 @@ enum SelfTest {
             print("\(pad("文档批量一次启动")) \(ok ? "✓" : "✕")        \(detail)")
         }
 
+        // 没有扩展名 / 扩展名不对的文件：按文件头识别类型，并能真正转换
+        do {
+            let dir = root.appendingPathComponent("sniff")
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            var problems: [String] = []
+            func stage(_ key: String, as name: String) -> URL? {
+                guard let from = fixtures[key] else { return nil }
+                let to = dir.appendingPathComponent(name)
+                try? fm.removeItem(at: to)
+                return (try? fm.copyItem(at: from, to: to)) != nil ? to : nil
+            }
+            let expectations: [(String, String, FileKind)] = [
+                ("png", "无扩展名图片", .image), ("jpg", "照片.dat", .image),
+                ("mp4", "无扩展名视频", .media), ("zip", "无扩展名压缩", .archive),
+            ]
+            for (key, name, kind) in expectations {
+                guard let url = stage(key, as: name) else { continue }
+                let got = FormatCatalog.kind(of: url)
+                if got != kind { problems.append("\(name) 识别为 \(got.title)") }
+            }
+            if let url = stage("png", as: "无扩展名图片"), let jpg = FormatCatalog.images.first(where: { $0.ext == "jpg" }) {
+                do { _ = try Engine.convert(source: url, format: jpg, to: outDir) { _ in } }
+                catch { problems.append("无扩展名图片转换：\((error as? LocalizedError)?.errorDescription ?? "\(error)")") }
+            }
+            if let url = stage("mp4", as: "无扩展名视频"), let mp3 = FormatCatalog.medias.first(where: { $0.ext == "mp3" }) {
+                do { _ = try Engine.convert(source: url, format: mp3, to: outDir) { _ in } }
+                catch { problems.append("无扩展名视频转换：\((error as? LocalizedError)?.errorDescription ?? "\(error)")") }
+            }
+            if let url = stage("txt", as: "不认识的扩展名.xyz") {
+                if FormatCatalog.kind(of: url) != .unknown { problems.append("纯文本不应被文件头误判") }
+            }
+            if problems.isEmpty { pass += 1 } else { fail += 1; failures.append("文件头识别：\(problems.joined(separator: "；"))") }
+            print("\(pad("无扩展名文件识别")) \(problems.isEmpty ? "✓" : "✕")        \(problems.isEmpty ? "按文件头识别类型并成功转换" : problems.joined(separator: "；"))")
+        }
+
         // 清除元数据时重绘像素，必须沿用原图色彩空间（如 Display P3），不能压成 DeviceRGB
         do {
             let p3 = root.appendingPathComponent("p3.png")

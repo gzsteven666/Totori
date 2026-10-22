@@ -131,7 +131,7 @@ enum FormatCatalog {
     /// 单个输入文件实际能产出的格式，顺序同目录。
     /// 同格式再输出（如 JPG→JPEG）保留，那是重新编码/压缩的用法；只有 PDF→PDF 没有意义。
     static func outputs(for source: URL) -> [OutputFormat] {
-        let ext = source.pathExtension.lowercased()
+        let ext = effectiveExtension(of: source)
         let kind = kind(of: source)
         let candidates: [OutputFormat]
         switch kind {
@@ -184,7 +184,7 @@ enum FormatCatalog {
     private static let archiveExts: Set<String> = ["zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar"]
 
     static func kind(of url: URL) -> FileKind {
-        let ext = url.pathExtension.lowercased()
+        let ext = effectiveExtension(of: url)
         if imageExts.contains(ext) {
             // gif 既能当图片也能当动图，按图片处理
             return .image
@@ -193,6 +193,62 @@ enum FormatCatalog {
         if mediaExts.contains(ext) { return .media }
         if archiveExts.contains(ext) { return .archive }
         return .unknown
+    }
+
+    private static var knownExts: Set<String> {
+        imageExts.union(documentExts).union(mediaExts).union(archiveExts)
+    }
+
+    /// 用于判定类型的扩展名：扩展名已知就直接用；没有扩展名或扩展名不认识时，读文件开头识别真实格式。
+    /// 只在扩展名不可用时才读文件，已有的按扩展名判断行为不变。
+    static func effectiveExtension(of url: URL) -> String {
+        let ext = url.pathExtension.lowercased()
+        if knownExts.contains(ext) { return ext }
+        return sniffedExtension(of: url) ?? ext
+    }
+
+    /// 按文件头魔数识别常见格式，返回规范扩展名；认不出返回 nil。
+    static func sniffedExtension(of url: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: 32), data.count >= 4 else { return nil }
+        let b = [UInt8](data)
+        func has(_ text: String, at offset: Int = 0) -> Bool {
+            let bytes = Array(text.utf8)
+            return b.count >= offset + bytes.count && Array(b[offset..<offset + bytes.count]) == bytes
+        }
+        if b.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return "png" }
+        if b.starts(with: [0xFF, 0xD8, 0xFF]) { return "jpg" }
+        if has("GIF8") { return "gif" }
+        if has("RIFF"), b.count >= 12 {
+            if has("WEBP", at: 8) { return "webp" }
+            if has("WAVE", at: 8) { return "wav" }
+            if has("AVI ", at: 8) { return "avi" }
+        }
+        if has("II*") && b[3] == 0 || has("MM") && b[2] == 0 && b[3] == 0x2A { return "tiff" }
+        if has("BM"), b.count >= 10, b[6...9].allSatisfy({ $0 == 0 }) { return "bmp" }
+        if has("ftyp", at: 4), b.count >= 12 {
+            let brand = String(decoding: b[8..<12], as: UTF8.self)
+            if ["heic", "heix", "hevc", "heim", "heis", "mif1", "msf1"].contains(brand) { return "heic" }
+            if brand == "avif" { return "avif" }
+            if brand == "qt  " { return "mov" }
+            if brand.hasPrefix("M4A") { return "m4a" }
+            return "mp4"
+        }
+        if has("%PDF") { return "pdf" }
+        if has("{\\rtf") { return "rtf" }
+        if has("PK") && b[2] == 3 && b[3] == 4 { return "zip" }
+        if b.starts(with: [0x1F, 0x8B]) { return "gz" }
+        if has("BZh") { return "bz2" }
+        if b.starts(with: [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00]) { return "xz" }
+        if b.starts(with: [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C]) { return "7z" }
+        if has("Rar!") { return "rar" }
+        if has("ID3") || (b[0] == 0xFF && b[1] & 0xE0 == 0xE0) { return "mp3" }
+        if has("OggS") { return "ogg" }
+        if has("fLaC") { return "flac" }
+        if b.starts(with: [0x1A, 0x45, 0xDF, 0xA3]) { return "mkv" }
+        if has("FORM"), has("AIFF", at: 8) { return "aiff" }
+        return nil
     }
 
     /// 输出的扩展名（有些格式写出时用别的后缀）
