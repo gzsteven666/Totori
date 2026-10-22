@@ -3,7 +3,7 @@
 一个本地自用的 macOS 文件格式转换器：菜单栏常驻，把文件拖进去，选个目标格式，转换完直接在访达里看。
 参考 [Tangerine](https://apps.apple.com/) 的交互形态，转换后端全部换成系统 API 与开源命令行工具，中文界面。
 
-- 源码版本：0.3.9 (30)；已发布安装包见 Releases
+- 版本：0.3.9 (30)；完整安装包见 Releases
 - 构建：不需要 Xcode，只用 Command Line Tools（`swiftc` + 手工组装 `.app`）
 - 运行：Apple Silicon、macOS 13+；Releases 完整包内置 `ffmpeg`/`ffprobe`、`cwebp` 和 LibreOffice，无需 Homebrew。源码的普通开发构建使用本机工具。
 

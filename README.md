@@ -27,7 +27,7 @@ Totori 是一个常驻菜单栏的 macOS 本地文件转换工具。森林绿、
 ## 安装到另一台 Mac
 
 1. 打开 [Releases](https://github.com/gzsteven666/Totori/releases/latest)。
-2. 下载 **`Totori-0.3.8-macOS-arm64.zip`**。GitHub 自动生成的“Source code”是源码，不是安装包。
+2. 下载 **`Totori-0.3.9-macOS-arm64.zip`**。GitHub 自动生成的“Source code”是源码，不是安装包。
 3. 解压，将 **Totori.app** 拖到“应用程序”，再打开。
 4. 首次使用按应用提示开启辅助功能权限；使用读取访达选中项的功能时，允许对访达的自动化访问。
 
@@ -39,7 +39,7 @@ Totori 使用本地签名，**尚未经过 Apple Developer ID 签名及公证**�
 
 ## 格式范围
 
-源码 0.3.9 (30) 修复文档转 PDF 的中文字体发现：使用 App 内独立配置读取系统及用户字体。Excel（`.xlsx` / `.xls`）转 PDF 新增“Excel 排版”选项，默认保留原表设置；“适配页宽”按 A4 横向、1 页宽、高度自动导出，不修改原件。该选项位于主窗口，长表仍纵向分页。已发布的完整安装包版本以 Releases 为准。
+0.3.9 (30) 修复文档转 PDF 的中文字体发现：使用 App 内独立配置读取系统及用户字体。Excel（`.xlsx` / `.xls`）转 PDF 新增“Excel 排版”选项，默认保留原表设置；“适配页宽”按 A4 横向、1 页宽、高度自动导出，不修改原件。该选项位于主窗口，长表仍纵向分页。
 
 | 类型 | 常用输出 |
 | --- | --- |
@@ -82,4 +82,4 @@ python3 scripts/package-release.py --runtime-work-dir "$PWD/work/portable" --out
 
 `--probe-runtime` 检查四个引擎均来自当前 App；`--selftest` 生成合成样本并测试转换。测试时先退出正在运行的 Totori。分发检查脚本 `scripts/verify-release.py` 还会检查架构、签名与非系统动态依赖。
 
-当前发行版：**0.3.8 (29)**。在 Apple Silicon / macOS 27.2 上验证；macOS 13 是编译部署目标，尚未逐个实机验证所有旧版系统。
+当前发行版：**0.3.9 (30)**。在 Apple Silicon / macOS 27.2 上验证；macOS 13 是编译部署目标，尚未逐个实机验证所有旧版系统。
