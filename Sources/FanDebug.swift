@@ -208,10 +208,10 @@ enum AcceptanceProbe {
             }
 
             // 7. pin 持久化
-            UserDefaults.standard.set(true, forKey: "xiaoju.shelfPinned")
+            UserDefaults.standard.set(true, forKey: "totori.shelfPinned")
             FileShelf.shared.reloadPinFromDefaults()
             expect(FileShelf.shared.debugPinned, "pin 从偏好恢复")
-            UserDefaults.standard.set(false, forKey: "xiaoju.shelfPinned")
+            UserDefaults.standard.set(false, forKey: "totori.shelfPinned")
             FileShelf.shared.reloadPinFromDefaults()
 
             print(failures.isEmpty ? "结果：验收自检全过 ✅" : "结果：\(failures.count) 项失败 ❌")
@@ -371,11 +371,11 @@ enum ThemeProbe {
         app.setActivationPolicy(.accessory)
 
         var averages: [(FanTheme, (Double, Double, Double))] = []
-        let previous = UserDefaults.standard.string(forKey: "xiaoju.theme")
+        let previous = UserDefaults.standard.string(forKey: "totori.theme")
 
         DispatchQueue.main.async {
             for theme in FanTheme.allCases {
-                UserDefaults.standard.set(theme.rawValue, forKey: "xiaoju.theme")
+                UserDefaults.standard.set(theme.rawValue, forKey: "totori.theme")
                 let renderer = ImageRenderer(content:
                     ThemeSwatch()
                         .padding(20)
@@ -399,9 +399,9 @@ enum ThemeProbe {
                 if diff < 0.004 { ok = false }
             }
             if let previous {
-                UserDefaults.standard.set(previous, forKey: "xiaoju.theme")
+                UserDefaults.standard.set(previous, forKey: "totori.theme")
             } else {
-                UserDefaults.standard.removeObject(forKey: "xiaoju.theme")
+                UserDefaults.standard.removeObject(forKey: "totori.theme")
             }
             print(ok ? "结果：三个主题渲染结果不同 ✅" : "结果：主题切换没有视觉差异 ❌")
             exit(ok ? 0 : 1)
@@ -590,7 +590,7 @@ enum ShelfProbe {
                let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                 view.cacheDisplay(in: view.bounds, to: rep)
                 if let data = rep.representation(using: .png, properties: [:]) {
-                    let path = URL(fileURLWithPath: "/tmp/xiaoju-shelf.png")
+                    let path = URL(fileURLWithPath: "/tmp/totori-shelf.png")
                     try? data.write(to: path)
                     print("  截图 → \(path.path)")
                 }
@@ -620,7 +620,7 @@ enum ShelfProbe {
                        let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                         view.cacheDisplay(in: view.bounds, to: rep)
                         if let data = rep.representation(using: .png, properties: [:]) {
-                            try? data.write(to: URL(fileURLWithPath: "/tmp/xiaoju-shelf-pinned.png"))
+                            try? data.write(to: URL(fileURLWithPath: "/tmp/totori-shelf-pinned.png"))
                         }
                     }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {

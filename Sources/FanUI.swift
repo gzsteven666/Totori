@@ -540,7 +540,7 @@ final class FanModel: ObservableObject {
 
 struct FanView: View {
     @ObservedObject var model: FanModel
-    @AppStorage("xiaoju.theme") private var themeRaw: String = FanTheme.forest.rawValue
+    @AppStorage("totori.theme") private var themeRaw: String = FanTheme.forest.rawValue
 
     private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
 

@@ -48,7 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 }
 
-struct TangerineLiteApp: App {
+struct TotoriApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @StateObject private var model = AppModel()
 
@@ -180,7 +180,7 @@ struct MenuBarContent: View {
         Menu("滚轮外观") {
             ForEach(FanTheme.allCases) { theme in
                 Button(theme.title) {
-                    UserDefaults.standard.set(theme.rawValue, forKey: "xiaoju.theme")
+                    UserDefaults.standard.set(theme.rawValue, forKey: "totori.theme")
                 }
             }
         }

@@ -12,17 +12,17 @@ enum ShelfEnhancementProbe {
 
         _ = NSApplication.shared
         let defaults = UserDefaults.standard
-        let previousCompact = defaults.object(forKey: "xiaoju.shelfCompact")
-        let previousOrigin = defaults.object(forKey: "xiaoju.shelfOrigin")
-        let previousPin = defaults.object(forKey: "xiaoju.shelfPinned")
+        let previousCompact = defaults.object(forKey: "totori.shelfCompact")
+        let previousOrigin = defaults.object(forKey: "totori.shelfOrigin")
+        let previousPin = defaults.object(forKey: "totori.shelfPinned")
         defer {
-            for (key, value) in [("xiaoju.shelfCompact", previousCompact),
-                                 ("xiaoju.shelfOrigin", previousOrigin),
-                                 ("xiaoju.shelfPinned", previousPin)] {
+            for (key, value) in [("totori.shelfCompact", previousCompact),
+                                 ("totori.shelfOrigin", previousOrigin),
+                                 ("totori.shelfPinned", previousPin)] {
                 if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
             }
         }
-        defaults.set(false, forKey: "xiaoju.shelfCompact")
+        defaults.set(false, forKey: "totori.shelfCompact")
 
         let folder = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("shelf-enhance-\(getpid())", isDirectory: true)
@@ -74,7 +74,7 @@ enum ShelfEnhancementProbe {
         expect(shelf.debugFrame.height == FileShelf.regularHeight, "默认普通高度 440")
         expect(shelf.toggleCompact(), "可切换紧凑")
         expect(shelf.debugFrame.height == FileShelf.compactHeight, "紧凑高度 260")
-        expect(UserDefaults.standard.bool(forKey: "xiaoju.shelfCompact"), "紧凑写入偏好")
+        expect(UserDefaults.standard.bool(forKey: "totori.shelfCompact"), "紧凑写入偏好")
         shelf.toggleCompact()
         expect(shelf.debugFrame.height == FileShelf.regularHeight, "可切回普通")
 

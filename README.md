@@ -58,6 +58,7 @@ Totori 使用本地签名，**尚未经过 Apple Developer ID 签名及公证**�
 - 视频转换不再有固定 5 分钟上限：连续 120 秒输出时间没有推进才判定卡死；MP4 / MOV / MKV / WebM 保留全部音轨；未选质量档位时码率按分辨率与帧率估算。
 - 无扩展名或扩展名不认识的文件按文件头识别类型；清元数据保留 16 位位深；MKV / MP4 / MOV / WebM 按容器保留字幕轨。
 - 图片、音视频、文档分别使用独立的转换队列，长视频不再阻塞图片转换。
+- 名字统一：可执行文件改为 `Totori`，bundle id 改为 `com.local.totori`，偏好键前缀改为 `totori.`，日志为 `~/Library/Logs/Totori.log`（超过 1 MB 自动转存为 `.1`）。首次启动会把旧版本的设置复制过来；因为 bundle id 变了，系统会重新询问“读取访达选中项”的自动化授权。
 - 子进程输出读到 EOF，不再丢尾部输出或多字节字符。
 - 文档引擎复用专用配置目录（`~/Library/Application Support/Totori/lo-profile`），10 个 docx 转 PDF 从 22.0 秒降到 11.9 秒（Apple M5，3 轮）。
 
@@ -85,9 +86,9 @@ python3 scripts/package-release.py --runtime-work-dir "$PWD/work/portable" --out
 运行安装包内的自检：
 
 ```sh
-"/Applications/Totori.app/Contents/MacOS/XiaoJuConvert" --probe-runtime
-"/Applications/Totori.app/Contents/MacOS/XiaoJuConvert" --selftest
-"/Applications/Totori.app/Contents/MacOS/XiaoJuConvert" --probe-document-pdf
+"/Applications/Totori.app/Contents/MacOS/Totori" --probe-runtime
+"/Applications/Totori.app/Contents/MacOS/Totori" --selftest
+"/Applications/Totori.app/Contents/MacOS/Totori" --probe-document-pdf
 ```
 
 `--probe-runtime` 检查四个引擎均来自当前 App；`--selftest` 生成合成样本并测试转换。测试时先退出正在运行的 Totori。分发检查脚本 `scripts/verify-release.py` 还会检查架构、签名与非系统动态依赖。

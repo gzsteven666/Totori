@@ -119,7 +119,7 @@ if CommandLine.arguments.contains("--probe-assets") {
 }
 if let index = CommandLine.arguments.firstIndex(of: "--dump-main") {
     let path = CommandLine.arguments.count > index + 1
-        ? CommandLine.arguments[index + 1] : "/tmp/xiaoju-main.png"
+        ? CommandLine.arguments[index + 1] : "/tmp/totori-main.png"
     exit(MainActor.assumeIsolated { MainWindowRender.run(outputPath: path) })
 }
 if CommandLine.arguments.contains("--probe-shelf") {
@@ -137,17 +137,19 @@ if CommandLine.arguments.contains("--selftest") {
 if let index = CommandLine.arguments.firstIndex(of: "--dump-panel") {
     let path = CommandLine.arguments.count > index + 1
         ? CommandLine.arguments[index + 1]
-        : "/tmp/xiaoju-panel.png"
+        : "/tmp/totori-panel.png"
     exit(MainActor.assumeIsolated { FanCapture.run(outputPath: path) })
 }
 if let index = CommandLine.arguments.firstIndex(of: "--render-fan") {
     let path = CommandLine.arguments.count > index + 1
         ? CommandLine.arguments[index + 1]
-        : "/tmp/xiaoju-fan.png"
+        : "/tmp/totori-fan.png"
     exit(MainActor.assumeIsolated { FanRender.run(outputPath: path) })
 }
 if CommandLine.arguments.contains("--show-fan") {
     exit(FanDebug.run())
 }
 
-TangerineLiteApp.main()
+// 旧版本（xiaoju 前缀）的设置带到新名字下，必须在任何界面读取偏好之前
+PreferencesMigration.runIfNeeded()
+TotoriApp.main()

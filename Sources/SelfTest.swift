@@ -18,7 +18,7 @@ enum SelfTest {
     static func run() -> Int32 {
         let fm = FileManager.default
         let root = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("xiaoju-selftest-\(getpid())")
+            .appendingPathComponent("totori-selftest-\(getpid())")
         try? fm.createDirectory(at: root, withIntermediateDirectories: true)
         let outDir = root.appendingPathComponent("out")
         try? fm.createDirectory(at: outDir, withIntermediateDirectories: true)
@@ -253,7 +253,7 @@ enum SelfTest {
         }
 
         // 二维码：生成 → 识别 → 比对
-        if let code = QRReader.makeCode("https://example.com/xiaoju"), !code.size.equalTo(.zero) {
+        if let code = QRReader.makeCode("https://example.com/totori"), !code.size.equalTo(.zero) {
             let url = outDir.appendingPathComponent("qr-fixture.png")
             if let tiff = code.tiffRepresentation,
                let rep = NSBitmapImageRep(data: tiff),
@@ -261,7 +261,7 @@ enum SelfTest {
                 try? png.write(to: url)
                 do {
                     let codes = try QRReader.read(url)
-                    let ok = codes.first == "https://example.com/xiaoju"
+                    let ok = codes.first == "https://example.com/totori"
                     if ok { pass += 1 } else { fail += 1; failures.append("二维码识别结果不对：\(codes)") }
                     print("\(pad("二维码识别")) \(ok ? "✓" : "✕")        读到 \(codes.first ?? "-")")
                 } catch {
@@ -589,6 +589,29 @@ enum SelfTest {
             let detail = ok ? "8 个并发同名输出全部成功且互不覆盖" : "成功 \(outputs.count)，不同名 \(distinct)，磁盘 \(onDisk)，错误 \(errors.prefix(1))"
             if ok { pass += 1 } else { fail += 1; failures.append("并发同名输出：\(detail)") }
             print("\(pad("跨队列并发同名输出")) \(ok ? "✓" : "✕")        \(detail)")
+        }
+
+        // 偏好迁移：旧 xiaoju.* 键复制为 totori.*，不覆盖新值，只迁移一次
+        do {
+            let suite = "totori.selftest.prefs"
+            let defaults = UserDefaults(suiteName: suite)!
+            defaults.removePersistentDomain(forName: suite)
+            defaults.set("glass-blue", forKey: "totori.theme")           // 新值已存在：不应被旧值覆盖
+            let legacy: [String: Any] = [
+                "xiaoju.theme": "forest", "xiaoju.shelfPinned": true,
+                "xiaoju.favoriteFormats.image": ["png", "jpg"], "unrelated.key": 1,
+            ]
+            let first = PreferencesMigration.runIfNeeded(defaults: defaults, legacy: legacy)
+            let second = PreferencesMigration.runIfNeeded(defaults: defaults, legacy: ["xiaoju.later": 1])
+            let ok = first == 2 && second == 0
+                && defaults.string(forKey: "totori.theme") == "glass-blue"
+                && defaults.bool(forKey: "totori.shelfPinned")
+                && (defaults.stringArray(forKey: "totori.favoriteFormats.image") ?? []) == ["png", "jpg"]
+                && defaults.object(forKey: "totori.later") == nil
+                && defaults.object(forKey: "unrelated.key") == nil
+            defaults.removePersistentDomain(forName: suite)
+            if ok { pass += 1 } else { fail += 1; failures.append("偏好迁移：首次迁移 \(first) 个键，再次 \(second)") }
+            print("\(pad("偏好迁移")) \(ok ? "✓" : "✕")        xiaoju.* → totori.*，不覆盖、只迁移一次")
         }
 
         // 日志轮转：超过上限就转存为 .1，旧的转存被覆盖，未超限不动

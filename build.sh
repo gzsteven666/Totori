@@ -35,7 +35,7 @@ trap 'exit 143' TERM
 
 STAGE="$(mktemp -d "$ROOT/.totori-build.XXXXXX")"
 NEW_APP="$STAGE/Totori.app"
-BIN="$NEW_APP/Contents/MacOS/XiaoJuConvert"
+BIN="$NEW_APP/Contents/MacOS/Totori"
 SDK="$(xcrun --sdk macosx --show-sdk-path)"
 mkdir -p "$NEW_APP/Contents/MacOS" "$NEW_APP/Contents/Resources"
 
@@ -68,12 +68,16 @@ plutil -lint "$NEW_APP/Contents/Info.plist"
 test -x "$BIN"
 
 echo "==> 签名并验证"
-IDENTITY="XiaoJu Local Signer"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
-  SIGNER="$IDENTITY"
-else
-  echo "未找到 ${IDENTITY}，使用 ad-hoc 签名"
-  SIGNER="-"
+# 本地签名身份：新名字优先，兼容旧版本创建的 "XiaoJu Local Signer"
+SIGNER="-"
+for IDENTITY in "Totori Local Signer" "XiaoJu Local Signer"; do
+  if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
+    SIGNER="$IDENTITY"
+    break
+  fi
+done
+if [ "$SIGNER" = "-" ]; then
+  echo "未找到本地签名身份（Totori Local Signer / XiaoJu Local Signer），使用 ad-hoc 签名"
 fi
 if [ -n "$RUNTIME" ]; then
   for tool in ffmpeg ffprobe cwebp; do
@@ -94,4 +98,4 @@ fi
 mv "$NEW_APP" "$APP"
 echo "==> 完成：$APP"
 if [ -n "$PREVIOUS" ]; then echo "    上一版本：$PREVIOUS"; fi
-echo "    自检：\"$APP/Contents/MacOS/XiaoJuConvert\" --selftest"
+echo "    自检：\"$APP/Contents/MacOS/Totori\" --selftest"

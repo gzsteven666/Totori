@@ -155,7 +155,7 @@ final class ProgressHUD {
 
 struct ProgressHUDView: View {
     @EnvironmentObject var center: ProgressCenter
-    @AppStorage("xiaoju.theme") private var themeRaw: String = FanTheme.forest.rawValue
+    @AppStorage("totori.theme") private var themeRaw: String = FanTheme.forest.rawValue
 
     private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
 

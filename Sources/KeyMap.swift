@@ -142,6 +142,6 @@ enum KeyMap {
     }
 
     private static func storageKey(_ mode: FanMode) -> String {
-        "xiaoju.key.\(mode.rawValue)"
+        "totori.key.\(mode.rawValue)"
     }
 }

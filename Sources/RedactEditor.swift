@@ -143,7 +143,7 @@ struct RedactEditorView: View {
 
     @State private var dragStart: CGPoint?
 
-    @AppStorage("xiaoju.theme") private var themeRaw: String = FanTheme.forest.rawValue
+    @AppStorage("totori.theme") private var themeRaw: String = FanTheme.forest.rawValue
     private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
 
     var body: some View {

@@ -25,7 +25,7 @@ final class FileShelf {
 
     static let regularHeight: CGFloat = 440
     static let compactHeight: CGFloat = 260
-    private(set) var isCompact = UserDefaults.standard.bool(forKey: "xiaoju.shelfCompact")
+    private(set) var isCompact = UserDefaults.standard.bool(forKey: "totori.shelfCompact")
     private var expandedSize: NSSize {
         NSSize(width: 328, height: isCompact ? Self.compactHeight : Self.regularHeight)
     }
@@ -35,12 +35,12 @@ final class FileShelf {
     var files: [URL] { canvas?.files ?? [] }
 
     private init() {
-        isPinned = UserDefaults.standard.bool(forKey: "xiaoju.shelfPinned")
+        isPinned = UserDefaults.standard.bool(forKey: "totori.shelfPinned")
     }
 
     /// 从偏好重读（启动时与自检都用它）
     func reloadPinFromDefaults() {
-        isPinned = UserDefaults.standard.bool(forKey: "xiaoju.shelfPinned")
+        isPinned = UserDefaults.standard.bool(forKey: "totori.shelfPinned")
         canvas?.isPinned = isPinned
     }
     var debugCanvas: ShelfCanvas? { canvas }
@@ -73,7 +73,7 @@ final class FileShelf {
 
     // MARK: 位置记忆
 
-    private static let originKey = "xiaoju.shelfOrigin"
+    private static let originKey = "totori.shelfOrigin"
 
     /// 读取上次展开位置：优先留在仍能看到它的那块屏，只有那块屏没了才夹回
     func restoredOrigin(for panel: NSPanel) -> NSPoint {
@@ -140,7 +140,7 @@ final class FileShelf {
     func togglePin() {
         isPinned.toggle()
         canvas?.isPinned = isPinned
-        UserDefaults.standard.set(isPinned, forKey: "xiaoju.shelfPinned")
+        UserDefaults.standard.set(isPinned, forKey: "totori.shelfPinned")
         DiagLog.write("shelf pin=\(isPinned)")
     }
 
@@ -277,7 +277,7 @@ final class FileShelf {
     func toggleCompact() -> Bool {
         if let canvas, canvas.hasActiveDragSession { return false }
         isCompact.toggle()
-        UserDefaults.standard.set(isCompact, forKey: "xiaoju.shelfCompact")
+        UserDefaults.standard.set(isCompact, forKey: "totori.shelfCompact")
         canvas?.isCompact = isCompact
         if let panel, !isCollapsed {
             let top = panel.frame.maxY
@@ -608,7 +608,7 @@ final class ShelfCanvas: NSView, NSDraggingSource, QLPreviewPanelDataSource, QLP
     enum ShelfViewMode: String { case grid, list }
 
     private(set) var viewMode: ShelfViewMode =
-        ShelfViewMode(rawValue: UserDefaults.standard.string(forKey: "xiaoju.shelfViewMode") ?? "") ?? .grid
+        ShelfViewMode(rawValue: UserDefaults.standard.string(forKey: "totori.shelfViewMode") ?? "") ?? .grid
 
     private var gridCellW: CGFloat {
         (bounds.width - padding * 2 - gridSpacing * 2) / 3
@@ -653,7 +653,7 @@ final class ShelfCanvas: NSView, NSDraggingSource, QLPreviewPanelDataSource, QLP
             .filter { $0.value.maxY > headerHeight + 2 }
             .min { $0.value.minY < $1.value.minY }?.key
         viewMode = viewMode == .grid ? .list : .grid
-        UserDefaults.standard.set(viewMode.rawValue, forKey: "xiaoju.shelfViewMode")
+        UserDefaults.standard.set(viewMode.rawValue, forKey: "totori.shelfViewMode")
         relayout()
         if let anchor, let frame = cellFrames[anchor] {
             scrollY += frame.minY - (headerHeight + 4)

@@ -171,7 +171,7 @@ final class CropModel: ObservableObject {
 
 struct CropEditorView: View {
     @ObservedObject var model: CropModel
-    @AppStorage("xiaoju.theme") private var themeRaw: String = FanTheme.forest.rawValue
+    @AppStorage("totori.theme") private var themeRaw: String = FanTheme.forest.rawValue
     private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
     var onApply: () -> Void
     var onCancel: () -> Void

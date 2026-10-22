@@ -72,7 +72,7 @@ extension FanTheme {
 
     /// 当前主题。直接读用户偏好：Palette 的动态颜色每次解析时都会取最新值。
     static var current: FanTheme {
-        FanTheme(rawValue: UserDefaults.standard.string(forKey: "xiaoju.theme") ?? "") ?? .forest
+        FanTheme(rawValue: UserDefaults.standard.string(forKey: "totori.theme") ?? "") ?? .forest
     }
 }
 
@@ -202,7 +202,7 @@ enum PawAssets {
 
 /// 主题小样：胶囊 + 图标 + 文字，设置预览与自检共用
 struct ThemeSwatch: View {
-    @AppStorage("xiaoju.theme") private var themeRaw: String = FanTheme.forest.rawValue
+    @AppStorage("totori.theme") private var themeRaw: String = FanTheme.forest.rawValue
     private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
 
     var body: some View {
@@ -237,7 +237,7 @@ extension View {
 /// 主题改变时让整棵视图树重建，Palette 里的动态颜色才会重新解析。
 /// 代价是该窗口里的临时 @State（如列表选择）会被重置；换主题是低频操作，可以接受。
 struct FollowsTheme: ViewModifier {
-    @AppStorage("xiaoju.theme") private var themeRaw: String = FanTheme.forest.rawValue
+    @AppStorage("totori.theme") private var themeRaw: String = FanTheme.forest.rawValue
 
     func body(content: Content) -> some View {
         content.id(themeRaw)

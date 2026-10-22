@@ -41,7 +41,7 @@ enum Feedback {
 enum ConversionRunner {
     /// 串行队列：以前是个 bool 锁，「正在转换时来的请求直接丢掉」，
     /// 一旦有一次转换卡住，后面所有转换都静默失效。改成排队执行。
-    private static let queue = DispatchQueue(label: "xiaoju.convert", qos: .userInitiated)
+    private static let queue = DispatchQueue(label: "totori.convert", qos: .userInitiated)
 
     /// 滚轮/压缩任务与主窗口使用相同取消令牌和结果对比入口；失败可沿用原设置重试。
     static func run(urls: [URL], format: OutputFormat,

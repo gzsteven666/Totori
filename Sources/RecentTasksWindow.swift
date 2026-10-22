@@ -21,7 +21,7 @@ final class RecentTasksWindow {
 private struct RecentTasksView: View {
     @ObservedObject var store: RecentTasksStore
     @State private var selectedID: UUID?
-    @AppStorage("xiaoju.theme") private var themeRaw = FanTheme.forest.rawValue
+    @AppStorage("totori.theme") private var themeRaw = FanTheme.forest.rawValue
     private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
     private var selected: RecentTaskRecord? { store.records.first { $0.id == selectedID } ?? store.records.first }
 

@@ -39,7 +39,7 @@ final class CompletionPanel {
 private struct CompletionView: View {
     let record: CompletionPanel.Record
     var close: () -> Void
-    @AppStorage("xiaoju.theme") private var themeRaw = FanTheme.forest.rawValue
+    @AppStorage("totori.theme") private var themeRaw = FanTheme.forest.rawValue
     private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
 
     var body: some View {

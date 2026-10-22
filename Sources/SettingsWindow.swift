@@ -20,9 +20,9 @@ final class SettingsWindow {
 }
 
 struct SettingsView: View {
-    @AppStorage("xiaoju.theme") private var themeRaw: String = FanTheme.forest.rawValue
-    @AppStorage("xiaoju.compressPreset") private var compressPreset: String = CompressionPreset.balanced.rawValue
-    @AppStorage("xiaoju.convertQuality") private var convertQuality: String = ""
+    @AppStorage("totori.theme") private var themeRaw: String = FanTheme.forest.rawValue
+    @AppStorage("totori.compressPreset") private var compressPreset: String = CompressionPreset.balanced.rawValue
+    @AppStorage("totori.convertQuality") private var convertQuality: String = ""
 
     @State private var bindings = Dictionary(uniqueKeysWithValues: FanMode.allCases.map { ($0, KeyMap.keys(for: $0)) })
     @State private var shortcutNotice: String?

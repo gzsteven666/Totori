@@ -355,7 +355,7 @@ struct ContentView: View {
     @State private var fileListFocusRequest = 0
     @State private var dragShortcutHint = KeyMap.conversionDragHint
     @State private var impactSources: [FileMetadataSnapshot] = []
-    @AppStorage("xiaoju.convertQuality") private var convertQuality = ""
+    @AppStorage("totori.convertQuality") private var convertQuality = ""
 
     private var defaultQualityTitle: String {
         CompressionPreset(rawValue: convertQuality)?.title ?? "标准"

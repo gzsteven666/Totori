@@ -56,7 +56,7 @@ Excel（`.xlsx` / `.xls`）转 PDF 时，主窗口提供“Excel 排版”：默
 ```bash
 ./build.sh                       # 产出 Totori.app
 open "Totori.app"               # 启动（菜单栏出现图标，同时打开主窗口）
-"Totori.app/Contents/MacOS/XiaoJuConvert" --selftest   # 跑转换自检
+"Totori.app/Contents/MacOS/Totori" --selftest   # 跑转换自检
 ```
 
 `build.sh` 在临时目录编译、组装资源并验证签名，通过后才替换正式 App。优先使用已有本地签名身份，缺失时采用 ad-hoc；旧 App 留在 backups。编译或签名失败不删除旧版，构建锁阻止同时发布。

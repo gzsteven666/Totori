@@ -13,8 +13,8 @@ enum InteractionProbe {
             print("\(ok ? "PASS" : "FAIL") \(label)")
         }
         let defaults = UserDefaults.standard
-        let keyNames = FanMode.allCases.map { "xiaoju.key.\($0.rawValue)" }
-        let names = keyNames + ["xiaoju.shelfViewMode"]
+        let keyNames = FanMode.allCases.map { "totori.key.\($0.rawValue)" }
+        let names = keyNames + ["totori.shelfViewMode"]
         let snapshot = names.reduce(into: [String: Any]()) { result, key in result[key] = defaults.object(forKey: key) }
         defer {
             for name in names {
@@ -23,7 +23,7 @@ enum InteractionProbe {
             }
             NotificationCenter.default.post(name: KeyMap.didChange, object: nil)
         }
-        let preservedNames = ["xiaoju.theme", "xiaoju.convertQuality", "xiaoju.compressPreset", "xiaoju.shelfOrigin", "xiaoju.shelfPinned"]
+        let preservedNames = ["totori.theme", "totori.convertQuality", "totori.compressPreset", "totori.shelfOrigin", "totori.shelfPinned"]
         let preserved = preservedNames.map { String(describing: defaults.object(forKey: $0)) }
         KeyMap.resetToDefaults()
 
@@ -82,7 +82,7 @@ enum InteractionProbe {
         expect(KeyMap.isDefault && KeyMap.conflicts.isEmpty, "恢复默认清除自定义与冲突")
         expect(preservedNames.map { String(describing: defaults.object(forKey: $0)) } == preserved,
                "恢复快捷键不改主题质量和浮窗设置")
-        defaults.set(0x80, forKey: "xiaoju.key.convert")
+        defaults.set(0x80, forKey: "totori.key.convert")
         expect(KeyMap.keys(for: .convert) == [.shift], "未知旧掩码回退为可用默认键")
         KeyMap.resetToDefaults()
 
@@ -97,7 +97,7 @@ enum InteractionProbe {
                 try FileManager.default.copyItem(at: original, to: url)
                 return url
             }
-            defaults.set("list", forKey: "xiaoju.shelfViewMode")
+            defaults.set("list", forKey: "totori.shelfViewMode")
             let canvas = ShelfCanvas(frame: NSRect(x: 0, y: 0, width: 328, height: 440))
             canvas.add(urls)
             canvas.selectFile(at: 1)

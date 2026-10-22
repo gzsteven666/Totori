@@ -5,7 +5,7 @@ enum FavoriteFormats {
     static let didChange = Notification.Name("TotoriFavoriteFormatsDidChange")
     static let configurableKinds: [FileKind] = [.image, .document, .media]
 
-    static func storageKey(_ kind: FileKind) -> String { "xiaoju.favoriteFormats.\(kind.rawValue)" }
+    static func storageKey(_ kind: FileKind) -> String { "totori.favoriteFormats.\(kind.rawValue)" }
 
     /// 只接受该文件类型支持的格式，去重并限定4—6项；不足4项的类型保留全部格式。
     static func normalized(_ values: [String], kind: FileKind) -> [String] {

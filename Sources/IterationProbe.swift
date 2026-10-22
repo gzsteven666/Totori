@@ -151,16 +151,16 @@ enum IterationProbe {
             try FileManager.default.moveItem(at: moved, to: good)
             // 位置验证只操作本探针进程拥有的窗口；测试结束恢复原偏好。
             let defaults = UserDefaults.standard
-            let previousOrigin = defaults.object(forKey: "xiaoju.shelfOrigin")
-            let previousPin = defaults.object(forKey: "xiaoju.shelfPinned")
+            let previousOrigin = defaults.object(forKey: "totori.shelfOrigin")
+            let previousPin = defaults.object(forKey: "totori.shelfPinned")
             defer {
                 FileShelf.shared.hide()
-                if let previousOrigin { defaults.set(previousOrigin, forKey: "xiaoju.shelfOrigin") }
-                else { defaults.removeObject(forKey: "xiaoju.shelfOrigin") }
-                if let previousPin { defaults.set(previousPin, forKey: "xiaoju.shelfPinned") }
-                else { defaults.removeObject(forKey: "xiaoju.shelfPinned") }
+                if let previousOrigin { defaults.set(previousOrigin, forKey: "totori.shelfOrigin") }
+                else { defaults.removeObject(forKey: "totori.shelfOrigin") }
+                if let previousPin { defaults.set(previousPin, forKey: "totori.shelfPinned") }
+                else { defaults.removeObject(forKey: "totori.shelfPinned") }
             }
-            defaults.set(false, forKey: "xiaoju.shelfPinned")
+            defaults.set(false, forKey: "totori.shelfPinned")
             FileShelf.shared.reloadPinFromDefaults()
             FileShelf.shared.show()
             if let panel = FileShelf.shared.debugCanvas?.window, let visible = NSScreen.main?.visibleFrame {
@@ -191,13 +191,13 @@ enum IterationProbe {
                 FileShelf.shared.hide()
                 FileShelf.shared.show()
                 expect(hypot(FileShelf.shared.debugFrame.minX - target.x, FileShelf.shared.debugFrame.minY - target.y) < 1, "浮窗关闭重开保持位置")
-                let savedOrigin = defaults.array(forKey: "xiaoju.shelfOrigin") as? [Double]
+                let savedOrigin = defaults.array(forKey: "totori.shelfOrigin") as? [Double]
                 FileShelf.shared.collapse(to: .left)
                 try await Task.sleep(nanoseconds: 350_000_000)
-                expect((defaults.array(forKey: "xiaoju.shelfOrigin") as? [Double]) == savedOrigin, "收起边条不覆盖展开位置")
+                expect((defaults.array(forKey: "totori.shelfOrigin") as? [Double]) == savedOrigin, "收起边条不覆盖展开位置")
                 FileShelf.shared.expand()
                 try await Task.sleep(nanoseconds: 350_000_000)
-                defaults.set([9e9, -9e9], forKey: "xiaoju.shelfOrigin")
+                defaults.set([9e9, -9e9], forKey: "totori.shelfOrigin")
                 FileShelf.shared.debugRestoreOrigin()
                 let frame = FileShelf.shared.debugFrame
                 expect(NSScreen.screens.contains { $0.visibleFrame.insetBy(dx: -1, dy: -1).contains(frame) }, "屏幕外位置恢复到可见范围")

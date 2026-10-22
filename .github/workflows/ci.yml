@@ -38,8 +38,8 @@ jobs:
       - name: Self test
         run: |
           export PATH="/Applications/LibreOffice.app/Contents/MacOS:$PATH"
-          "$RUNNER_TEMP/Totori.app/Contents/MacOS/XiaoJuConvert" --selftest
+          "$RUNNER_TEMP/Totori.app/Contents/MacOS/Totori" --selftest
       - name: Document PDF probe
         run: |
           export PATH="/Applications/LibreOffice.app/Contents/MacOS:$PATH"
-          "$RUNNER_TEMP/Totori.app/Contents/MacOS/XiaoJuConvert" --probe-document-pdf
+          "$RUNNER_TEMP/Totori.app/Contents/MacOS/Totori" --probe-document-pdf

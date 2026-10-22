@@ -228,7 +228,7 @@ struct TrimEditorView: View {
     var onExport: () -> Void
     var onCancel: () -> Void
 
-    @AppStorage("xiaoju.theme") private var themeRaw: String = FanTheme.forest.rawValue
+    @AppStorage("totori.theme") private var themeRaw: String = FanTheme.forest.rawValue
     private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
 
     var body: some View {

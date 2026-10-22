@@ -56,7 +56,7 @@ struct CompressionOptions {
 
     /// 普通转换用的默认质量（只影响编码质量，不缩放尺寸）
     static func fromDefaults() -> CompressionOptions {
-        let raw = UserDefaults.standard.string(forKey: "xiaoju.convertQuality") ?? ""
+        let raw = UserDefaults.standard.string(forKey: "totori.convertQuality") ?? ""
         guard let preset = CompressionPreset(rawValue: raw) else { return .none }
         var options = make(preset)
         options.maxSide = nil
@@ -124,14 +124,14 @@ final class CompressionPanelController: ObservableObject {
     init(urls: [URL], format: OutputFormat) {
         self.urls = urls
         self.format = format
-        let saved = UserDefaults.standard.string(forKey: "xiaoju.compressPreset") ?? ""
+        let saved = UserDefaults.standard.string(forKey: "totori.compressPreset") ?? ""
         self.preset = CompressionPreset(rawValue: saved) ?? .balanced
         updateGuidance()
     }
 
     func select(_ preset: CompressionPreset) {
         self.preset = preset
-        UserDefaults.standard.set(preset.rawValue, forKey: "xiaoju.compressPreset")
+        UserDefaults.standard.set(preset.rawValue, forKey: "totori.compressPreset")
         updateGuidance()
     }
 
@@ -194,7 +194,7 @@ struct CompressionPanelView: View {
     var onStart: (CompressionPreset) -> Void
     var onCancel: () -> Void
 
-    @AppStorage("xiaoju.theme") private var themeRaw: String = FanTheme.forest.rawValue
+    @AppStorage("totori.theme") private var themeRaw: String = FanTheme.forest.rawValue
     private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
 
     var body: some View {

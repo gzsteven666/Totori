@@ -421,7 +421,7 @@ enum Engine {
                 throw ConversionError.toolMissing("需要 cwebp 才能输出 WebP（brew install webp）")
             }
             let temp = URL(fileURLWithPath: NSTemporaryDirectory())
-                .appendingPathComponent("tangerine-\(UUID().uuidString).png")
+                .appendingPathComponent("totori-\(UUID().uuidString).png")
             defer { try? FileManager.default.removeItem(at: temp) }
             // cwebp 不读 PNG 里的 EXIF 方向标记，必须先把方向烘焙进像素，否则竖拍照片会横过来。
             let working = downscaled(imageSource, maxSide: options.maxSide)
@@ -656,7 +656,7 @@ enum Engine {
                                            layout: SpreadsheetPDFLayout = .original,
                                            progress: @escaping (Double) -> Void) throws -> Bool {
         let staging = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("xiaoju-lo-\(UUID().uuidString)")
+            .appendingPathComponent("totori-lo-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: staging) }
 

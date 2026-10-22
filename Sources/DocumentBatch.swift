@@ -82,7 +82,7 @@ enum DocumentPrefetch {
         guard eligible.count >= 2 else { return }
 
         let directory = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("xiaoju-lo-batch-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("totori-lo-batch-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         track(directory: directory)
 

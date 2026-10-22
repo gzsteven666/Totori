@@ -21,7 +21,7 @@ enum TaskOptionsProbe {
         let fm = FileManager.default
         let root = ProbeFixtures.work.appendingPathComponent("task-probe-\(getpid())", isDirectory: true)
         let fixture = ProbeFixtures.inputs.appendingPathComponent("01-旅行照片-家庭合影-精选修订版.png")
-        let previous = UserDefaults.standard.string(forKey: "xiaoju.convertQuality")
+        let previous = UserDefaults.standard.string(forKey: "totori.convertQuality")
         do {
             let bytes = try Data(contentsOf: fixture)
             let input = root.appendingPathComponent("input")
@@ -117,7 +117,7 @@ enum TaskOptionsProbe {
             cancelled.taskQuality = .smaller
             cancelled.clear()
             expect(cancelled.taskQuality == .defaults, "清空批次恢复跟随默认质量")
-            expect(UserDefaults.standard.string(forKey: "xiaoju.convertQuality") == previous, "本次质量没有改写全局默认")
+            expect(UserDefaults.standard.string(forKey: "totori.convertQuality") == previous, "本次质量没有改写全局默认")
             expect(try urls.allSatisfy { try Data(contentsOf: $0) == bytes }, "所有测试原件内容保留")
         } catch {
             failed += 1

@@ -22,12 +22,12 @@ enum ShelfUIProbe {
             print("\(condition ? "PASS" : "FAIL") \(label)")
         }
         let defaults = UserDefaults.standard
-        let previousMode = defaults.object(forKey: "xiaoju.shelfViewMode")
+        let previousMode = defaults.object(forKey: "totori.shelfViewMode")
         defer {
-            if let previousMode { defaults.set(previousMode, forKey: "xiaoju.shelfViewMode") }
-            else { defaults.removeObject(forKey: "xiaoju.shelfViewMode") }
+            if let previousMode { defaults.set(previousMode, forKey: "totori.shelfViewMode") }
+            else { defaults.removeObject(forKey: "totori.shelfViewMode") }
         }
-        defaults.set("grid", forKey: "xiaoju.shelfViewMode")
+        defaults.set("grid", forKey: "totori.shelfViewMode")
         let inputs = ProbeFixtures.inputs
         let folder = ProbeFixtures.work.appendingPathComponent("shelf-probe-\(getpid())", isDirectory: true)
         do {
