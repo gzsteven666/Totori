@@ -686,17 +686,28 @@ enum Engine {
             throw ConversionError.toolMissing("需要 ffmpeg（brew install ffmpeg）")
         }
 
-        let duration = try mediaDuration(secondsOf: source)
+        let info = try probeMedia(source)
+        let duration = info.duration
         progress(0.02)
 
         var args = ["-hide_banner", "-nostdin", "-y", "-i", source.path]
+        // 显式映射：容器支持多音轨时保留全部音轨（默认只会带一条）。
+        // V 排除封面图；末尾 ? 让源文件缺少对应流时不报错。
+        switch format.ext {
+        case "mp4", "mov", "mkv", "webm":
+            args += ["-map", "0:V:0?", "-map", "0:a?"]
+        case "avi", "wmv":
+            args += ["-map", "0:V:0?", "-map", "0:a:0?"]
+        default:
+            break   // gif 与纯音频输出沿用 ffmpeg 的默认选流
+        }
 
         switch format.ext {
         case "mp4":
-            args += ["-c:v", "h264_videotoolbox", "-b:v", options.videoBitrate(fallback: "6M"), "-c:a", "aac", "-b:a", "160k",
+            args += ["-c:v", "h264_videotoolbox", "-b:v", videoBitrate(options, probe: info, bitsPerPixel: 0.1, fallback: "6M"), "-c:a", "aac", "-b:a", "160k",
                      "-movflags", "+faststart"]
         case "mov":
-            args += ["-c:v", "h264_videotoolbox", "-b:v", options.videoBitrate(fallback: "8M"), "-c:a", "aac", "-b:a", "192k",
+            args += ["-c:v", "h264_videotoolbox", "-b:v", videoBitrate(options, probe: info, bitsPerPixel: 0.13, fallback: "8M"), "-c:a", "aac", "-b:a", "192k",
                      "-movflags", "+faststart"]
         case "mkv":
             args += ["-c:v", "libx264", "-preset", "veryfast",
@@ -763,21 +774,76 @@ enum Engine {
         progress(1.0)
     }
 
-    private static func mediaDuration(secondsOf url: URL) throws -> Double {
-        guard let ffprobe = Shell.which("ffprobe") else { return 0 }
+    /// ffprobe 读到的源文件信息；读不到的字段保持 nil / 0，调用方各自回退。
+    struct MediaProbe: Equatable {
+        var duration: Double = 0
+        var width: Int?
+        var height: Int?
+        var fps: Double?
+        var videoBitsPerSecond: Int?
+    }
+
+    private static func probeMedia(_ url: URL) throws -> MediaProbe {
+        guard let ffprobe = Shell.which("ffprobe") else { return MediaProbe() }
         do {
             let result = try Shell.run(ffprobe, [
-                "-v", "error", "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1", url.path,
+                "-v", "error", "-select_streams", "V:0",
+                "-show_entries", "stream=width,height,r_frame_rate,bit_rate:format=duration",
+                "-of", "json", url.path,
             ], captureOutput: true)
-            guard result.status == 0 else { return 0 }
-            let text = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-            return Double(text) ?? 0
+            guard result.status == 0 else { return MediaProbe() }
+            return parseProbe(json: result.stdout)
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            return 0
+            return MediaProbe()
         }
+    }
+
+    /// 解析 ffprobe 的 JSON；独立成纯函数便于自检。
+    static func parseProbe(json: String) -> MediaProbe {
+        var probe = MediaProbe()
+        guard let root = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any] else {
+            return probe
+        }
+        if let format = root["format"] as? [String: Any], let text = format["duration"] as? String {
+            probe.duration = Double(text) ?? 0
+        }
+        if let stream = (root["streams"] as? [[String: Any]])?.first {
+            probe.width = stream["width"] as? Int
+            probe.height = stream["height"] as? Int
+            if let rate = stream["r_frame_rate"] as? String {
+                let parts = rate.split(separator: "/").compactMap { Double($0) }
+                if parts.count == 2, parts[1] > 0 { probe.fps = parts[0] / parts[1] }
+                else if parts.count == 1 { probe.fps = parts[0] }
+            }
+            if let text = stream["bit_rate"] as? String, let value = Int(text), value > 0 {
+                probe.videoBitsPerSecond = value
+            }
+        }
+        return probe
+    }
+
+    /// 按分辨率与帧率估算视频码率：`bitsPerPixel` 取自旧的固定值（1080p30 约 6M），
+    /// 这样 1080p 的结果基本不变，4K 不再偏低、480p 不再虚胖。
+    /// 不超过源视频自身码率（重新编码不应比原片更大），并限制在 0.5–50 Mbps。
+    static func adaptiveVideoBitrate(width: Int, height: Int, fps: Double?,
+                                     sourceBitsPerSecond: Int?, bitsPerPixel: Double) -> Int {
+        let rate = min(max(fps ?? 30, 1), 60)
+        var bits = Double(width * height) * rate * bitsPerPixel
+        if let source = sourceBitsPerSecond { bits = min(bits, Double(source)) }
+        return Int(min(max(bits, 500_000), 50_000_000))
+    }
+
+    private static func videoBitrate(_ options: CompressionOptions, probe: MediaProbe,
+                                     bitsPerPixel: Double, fallback: String) -> String {
+        // 用户明确选了档位就按档位；否则按源视频规格自适应
+        if options.preset != nil { return options.videoBitrate(fallback: fallback) }
+        guard let w = probe.width, let h = probe.height, w > 0, h > 0 else { return fallback }
+        let bits = adaptiveVideoBitrate(width: w, height: h, fps: probe.fps,
+                                        sourceBitsPerSecond: probe.videoBitsPerSecond,
+                                        bitsPerPixel: bitsPerPixel)
+        return "\(bits / 1000)k"
     }
 
     // MARK: 压缩包

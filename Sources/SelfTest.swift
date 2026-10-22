@@ -348,6 +348,66 @@ enum SelfTest {
             print("\(pad("AVIF/BMP/GIF/JP2 选项")) \(problems.isEmpty ? "✓" : "✕")        \(problems.isEmpty ? "方向、清元数据、缩边均生效" : problems.joined(separator: "；"))")
         }
 
+        // 视频码率按分辨率自适应：1080p30 与旧固定值（6M）接近，4K 更高、小分辨率更低，且不超过源码率
+        do {
+            let hd = Engine.adaptiveVideoBitrate(width: 1920, height: 1080, fps: 30, sourceBitsPerSecond: nil, bitsPerPixel: 0.1)
+            let uhd = Engine.adaptiveVideoBitrate(width: 3840, height: 2160, fps: 30, sourceBitsPerSecond: nil, bitsPerPixel: 0.1)
+            let sd = Engine.adaptiveVideoBitrate(width: 640, height: 480, fps: 30, sourceBitsPerSecond: nil, bitsPerPixel: 0.1)
+            let capped = Engine.adaptiveVideoBitrate(width: 1920, height: 1080, fps: 30, sourceBitsPerSecond: 2_000_000, bitsPerPixel: 0.1)
+            let floor = Engine.adaptiveVideoBitrate(width: 160, height: 120, fps: 15, sourceBitsPerSecond: nil, bitsPerPixel: 0.1)
+            let parsed = Engine.parseProbe(json: """
+                {"streams":[{"width":1280,"height":720,"r_frame_rate":"30000/1001","bit_rate":"3500000"}],
+                 "format":{"duration":"12.5"}}
+                """)
+            let ok = (5_500_000...6_900_000).contains(hd) && uhd > 20_000_000 && sd < 1_500_000
+                && capped == 2_000_000 && floor == 500_000
+                && parsed.width == 1280 && parsed.height == 720 && parsed.duration == 12.5
+                && parsed.videoBitsPerSecond == 3_500_000 && abs((parsed.fps ?? 0) - 29.97) < 0.01
+            let detail = "1080p=\(hd / 1000)k 4K=\(uhd / 1000)k 480p=\(sd / 1000)k"
+            if ok { pass += 1 } else { fail += 1; failures.append("视频码率自适应：\(detail) 封顶=\(capped) 下限=\(floor) 解析=\(parsed)") }
+            print("\(pad("视频码率自适应")) \(ok ? "✓" : "✕")        \(detail)")
+        }
+
+        // 多音轨：mp4/mkv 输出保留全部音轨；无音轨的源也能转成视频
+        if let ffmpeg = Shell.which("ffmpeg"), let ffprobe = Shell.which("ffprobe") {
+            let twoAudio = root.appendingPathComponent("two-audio.mp4")
+            let silent = root.appendingPathComponent("silent.mp4")
+            func audioStreams(_ url: URL) -> Int {
+                let r = try? Shell.run(ffprobe, ["-v", "error", "-select_streams", "a", "-show_entries",
+                                                 "stream=index", "-of", "csv=p=0", url.path], captureOutput: true)
+                return r?.stdout.split(separator: "\n").count ?? -1
+            }
+            var problems: [String] = []
+            let made = (try? Shell.run(ffmpeg, [
+                "-hide_banner", "-y",
+                "-f", "lavfi", "-i", "testsrc=size=320x240:rate=15",
+                "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+                "-f", "lavfi", "-i", "sine=frequency=880:duration=1",
+                "-map", "0:v", "-map", "1:a", "-map", "2:a", "-t", "1", "-pix_fmt", "yuv420p",
+                "-c:v", "h264_videotoolbox", "-c:a", "aac", twoAudio.path,
+            ]).status == 0) ?? false
+            let madeSilent = (try? Shell.run(ffmpeg, [
+                "-hide_banner", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=15", "-t", "1",
+                "-pix_fmt", "yuv420p", "-c:v", "h264_videotoolbox", silent.path,
+            ]).status == 0) ?? false
+            if made && madeSilent && audioStreams(twoAudio) == 2 {
+                for ext in ["mp4", "mov", "mkv", "webm"] {
+                    guard let format = FormatCatalog.medias.first(where: { $0.ext == ext }) else { continue }
+                    do {
+                        let out = try Engine.convert(source: twoAudio, format: format, to: outDir) { _ in }
+                        let count = audioStreams(out)
+                        if count != 2 { problems.append("\(ext) 音轨 \(count)/2") }
+                    } catch { problems.append("\(ext)：\((error as? LocalizedError)?.errorDescription ?? "\(error)")") }
+                }
+                if let mp4 = FormatCatalog.medias.first(where: { $0.ext == "mp4" }) {
+                    do { _ = try Engine.convert(source: silent, format: mp4, to: outDir) { _ in } }
+                    catch { problems.append("无音轨源转 mp4：\((error as? LocalizedError)?.errorDescription ?? "\(error)")") }
+                }
+            } else { problems.append("无法生成多音轨样本") }
+            if problems.isEmpty { pass += 1 } else { fail += 1; failures.append("多音轨：\(problems.joined(separator: "；"))") }
+            print("\(pad("多音轨保留")) \(problems.isEmpty ? "✓" : "✕")        \(problems.isEmpty ? "mp4/mov/mkv/webm 均保留 2 条音轨" : problems.joined(separator: "；"))")
+        }
+
         // 清除元数据时重绘像素，必须沿用原图色彩空间（如 Display P3），不能压成 DeviceRGB
         do {
             let p3 = root.appendingPathComponent("p3.png")
