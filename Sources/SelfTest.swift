@@ -334,6 +334,22 @@ enum SelfTest {
             print("\(pad("空闲超时")) ✕        \(error)")
         }
 
+        // 子进程输出：大输出不丢尾、多字节字符被分块切开仍可还原、无换行的最后一行不丢
+        do {
+            let big = try Shell.run("/usr/bin/seq", ["1", "300000"], captureOutput: true)
+            let bigOK = big.stdout.split(separator: "\n").last == "300000"
+            var lines: [String] = []
+            let split = try Shell.run("/bin/sh",
+                ["-c", "printf '\\344\\270'; sleep 0.3; printf '\\255\\n'; printf tail"]) { lines.append($0) }
+            let splitOK = lines == ["中", "tail"] && split.stdout == "中\ntail"
+            let ok = bigOK && splitOK
+            if ok { pass += 1 } else { fail += 1; failures.append("子进程输出：大输出=\(bigOK) 分块字符=\(splitOK) \(lines)") }
+            print("\(pad("子进程输出完整性")) \(ok ? "✓" : "✕")        大输出尾行、分块中文、无换行末行")
+        } catch {
+            fail += 1; failures.append("子进程输出用例异常：\(error)")
+            print("\(pad("子进程输出完整性")) ✕        \(error)")
+        }
+
         print("-------------------------------------------------------------")
         print("通过 \(pass) 项，失败 \(fail) 项")
         if !failures.isEmpty {

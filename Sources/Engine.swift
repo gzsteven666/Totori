@@ -195,8 +195,26 @@ enum Shell {
         process.standardError = errPipe
 
         var outHandle: FileHandle?
-        var stdoutReadHandle: FileHandle?
         var stdoutCollector: (() -> String)?
+        // 专用读线程一直读到 EOF，进程退出后再汇合，保证不丢尾部输出；
+        // 按字节切行后再解码，多字节字符不会因分块被切坏。
+        let readers = DispatchGroup()
+        func drain(_ handle: FileHandle, _ onData: @escaping (Data) -> Void, onEnd: @escaping () -> Void = {}) {
+            readers.enter()
+            DispatchQueue.global().async {
+                // read(2) 有多少返回多少；FileHandle.read(upToCount:) 会攒满再返回，进度行会被延迟。
+                let fd = handle.fileDescriptor
+                var buffer = [UInt8](repeating: 0, count: 65_536)
+                while true {
+                    let n = Darwin.read(fd, &buffer, buffer.count)
+                    if n > 0 { onData(Data(buffer[0..<n])) }
+                    else if n < 0 && errno == EINTR { continue }
+                    else { break }
+                }
+                onEnd()
+                readers.leave()
+            }
+        }
         if let file {
             FileManager.default.createFile(atPath: file.path, contents: nil)
             let handle = try FileHandle(forWritingTo: file)
@@ -205,37 +223,42 @@ enum Shell {
         } else if onStdoutLine != nil || captureOutput || idleTimeout > 0 {
             // 空闲超时靠 stdout 活动判断进展，所以也需要接管输出管道。
             let outPipe = Pipe()
-            stdoutReadHandle = outPipe.fileHandleForReading
             process.standardOutput = outPipe
             let lock = NSLock()
-            var buffer = ""
-            var collected = ""
-            outPipe.fileHandleForReading.readabilityHandler = { handle in
-                let data = handle.availableData
-                if data.isEmpty { handle.readabilityHandler = nil; return }
-                guard let text = String(data: data, encoding: .utf8) else { return }
+            var pending = Data()
+            var collected = Data()
+            func emit(_ lineData: Data) {
+                let line = String(decoding: lineData, as: UTF8.self)
+                if isProgress?(line) ?? true { control.touch() }
+                onStdoutLine?(line)
+            }
+            drain(outPipe.fileHandleForReading, { data in
                 lock.lock()
-                collected += text
-                buffer.append(text)
-                var lines: [String] = []
-                while let idx = buffer.firstIndex(of: "\n") {
-                    lines.append(String(buffer[buffer.startIndex..<idx]))
-                    buffer.removeSubrange(buffer.startIndex...idx)
+                collected.append(data)
+                pending.append(data)
+                var lines: [Data] = []
+                while let idx = pending.firstIndex(of: 0x0A) {
+                    lines.append(pending.subdata(in: pending.startIndex..<idx))
+                    pending.removeSubrange(pending.startIndex...idx)
                 }
                 lock.unlock()
-                for line in lines {
-                    if isProgress?(line) ?? true { control.touch() }
-                    onStdoutLine?(line)
-                }
+                lines.forEach(emit)
+            }, onEnd: {
+                lock.lock()
+                let rest = pending
+                pending = Data()
+                lock.unlock()
+                if !rest.isEmpty { emit(rest) }
+            })
+            stdoutCollector = {
+                lock.lock(); defer { lock.unlock() }
+                return String(decoding: collected, as: UTF8.self)
             }
-            stdoutCollector = { lock.lock(); defer { lock.unlock() }; return collected }
         }
 
         let errLock = NSLock()
         var errData = Data()
-        errPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.isEmpty { handle.readabilityHandler = nil; return }
+        drain(errPipe.fileHandleForReading) { data in
             errLock.lock()
             errData.append(data)
             if errData.count > 64_000 { errData = errData.suffix(32_000) }
@@ -246,8 +269,6 @@ enum Shell {
         defer {
             cancellation?.unregisterProcess(registration)
             _ = control.finish()
-            errPipe.fileHandleForReading.readabilityHandler = nil
-            stdoutReadHandle?.readabilityHandler = nil
             outHandle?.closeFile()
         }
         try control.start()
@@ -257,8 +278,8 @@ enum Shell {
         process.waitUntilExit()
         let timedOut = control.finish()
         try cancellation?.check()
-        errPipe.fileHandleForReading.readabilityHandler = nil
-        stdoutReadHandle?.readabilityHandler = nil
+        // 子进程若留下继续持有管道的孙进程，EOF 可能迟迟不来；最多再等 2 秒，不无限挂起。
+        _ = readers.wait(timeout: .now() + 2)
 
         errLock.lock()
         let errText = String(data: errData, encoding: .utf8) ?? ""
