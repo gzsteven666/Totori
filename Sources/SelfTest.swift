@@ -408,6 +408,25 @@ enum SelfTest {
             print("\(pad("多音轨保留")) \(problems.isEmpty ? "✓" : "✕")        \(problems.isEmpty ? "mp4/mov/mkv/webm 均保留 2 条音轨" : problems.joined(separator: "；"))")
         }
 
+        // 复用的文档引擎配置被写坏（例如转换中途被取消）时，应自动改用干净配置并恢复
+        if FileManager.default.isExecutableFile(atPath: "/Applications/LibreOffice.app/Contents/MacOS/soffice") || Shell.which("soffice") != nil, let docx = fixtures["docx"],
+           let pdf = FormatCatalog.documents.first(where: { $0.ext == "pdf" }) {
+            var detail = ""
+            var ok = false
+            do {
+                _ = try Engine.convert(source: docx, format: pdf, to: outDir) { _ in }   // 确保配置已存在
+                let settings = Engine.sharedProfile.appendingPathComponent("user/registrymodifications.xcu")
+                try "damaged <<<".write(to: settings, atomically: true, encoding: .utf8)
+                let recovered = try Engine.convert(source: docx, format: pdf, to: outDir) { _ in }
+                let healed = try Engine.convert(source: docx, format: pdf, to: outDir) { _ in }
+                ok = FileManager.default.fileExists(atPath: recovered.path)
+                    && FileManager.default.fileExists(atPath: healed.path)
+                detail = ok ? "损坏后转换成功，配置已重建" : "输出缺失"
+            } catch { detail = "\((error as? LocalizedError)?.errorDescription ?? "\(error)")" }
+            if ok { pass += 1 } else { fail += 1; failures.append("文档引擎配置损坏恢复：\(detail)") }
+            print("\(pad("文档引擎配置损坏恢复")) \(ok ? "✓" : "✕")        \(detail)")
+        }
+
         // 清除元数据时重绘像素，必须沿用原图色彩空间（如 Display P3），不能压成 DeviceRGB
         do {
             let p3 = root.appendingPathComponent("p3.png")

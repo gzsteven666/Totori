@@ -625,9 +625,6 @@ enum Engine {
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: staging) }
 
-        // 每次转换单独使用配置目录，避免与用户打开的 LibreOffice 或其他转换共享进程。
-        let profile = staging.appendingPathComponent("profile", isDirectory: true)
-
         var input = source
         if layout == .fitWidth, destination.pathExtension.lowercased() == "pdf",
            SpreadsheetPDFLayout.supports(source) {
@@ -643,34 +640,67 @@ enum Engine {
             input = try SpreadsheetPDFLayout.fitWidthCopy(of: input, in: staging)
         }
 
-        let args = [
-            "--headless", "--norestore", "--nolockcheck", "--nodefault",
-            "-env:UserInstallation=\(profile.absoluteString)",
-            "--convert-to", filter ?? destination.pathExtension,
-            "--outdir", staging.path,
-            input.path,
-        ]
+        /// 用指定配置目录跑一次转换；成功写出 destination 返回 true。
+        func attempt(profile: URL) throws -> Bool {
+            let args = [
+                "--headless", "--norestore", "--nolockcheck", "--nodefault",
+                "-env:UserInstallation=\(profile.absoluteString)",
+                "--convert-to", filter ?? destination.pathExtension,
+                "--outdir", staging.path,
+                input.path,
+            ]
+            do {
+                _ = try Shell.run(soffice, args, timeout: 300)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // 工具启动失败仍允许原有文档后端兜底；取消绝不走兜底。
+            }
+            try ConversionCancellation.current?.check()
 
-        do {
-            _ = try Shell.run(soffice, args, timeout: 300)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            // 工具启动失败仍允许原有文档后端兜底；取消绝不走兜底。
+            let produced = (try? FileManager.default.contentsOfDirectory(at: staging,
+                                                                        includingPropertiesForKeys: nil))?
+                .first { $0.pathExtension.lowercased() == destination.pathExtension.lowercased() }
+            guard let produced, fileSize(produced) > 0 else { return false }
+            try? FileManager.default.removeItem(at: destination)
+            try FileManager.default.copyItem(at: produced, to: destination)
+            return true
         }
-        try ConversionCancellation.current?.check()
 
-        let produced = (try? FileManager.default.contentsOfDirectory(at: staging,
-                                                                    includingPropertiesForKeys: nil))?
-            .first { $0.pathExtension.lowercased() == destination.pathExtension.lowercased() }
-
-        guard let produced, fileSize(produced) > 0 else { return false }
-        try? FileManager.default.removeItem(at: destination)
-        try FileManager.default.copyItem(at: produced, to: destination)
-        progress(1.0)
-        return true
+        // 优先复用 Totori 专用的配置目录：每次新建配置要多花约一半时间（见基准）。
+        // 它与用户自己的 LibreOffice 配置互不相干；同一时刻只允许一个转换占用，
+        // 占不到锁就退回一次性配置目录。
+        if sharedProfileLock.`try`() {
+            defer { sharedProfileLock.unlock() }
+            let existed = FileManager.default.fileExists(atPath: sharedProfile.path)
+            try? FileManager.default.createDirectory(at: sharedProfile.deletingLastPathComponent(),
+                                                     withIntermediateDirectories: true)
+            if try attempt(profile: sharedProfile) { progress(1.0); return true }
+            guard existed else { return false }
+            // 复用的配置可能被上次被取消的进程弄坏：用干净配置再试一次，成功就丢弃旧配置。
+            try? FileManager.default.removeItem(at: staging.appendingPathComponent("profile"))
+            if try attempt(profile: staging.appendingPathComponent("profile", isDirectory: true)) {
+                try? FileManager.default.removeItem(at: sharedProfile)
+                progress(1.0)
+                return true
+            }
+            return false
+        }
+        if try attempt(profile: staging.appendingPathComponent("profile", isDirectory: true)) {
+            progress(1.0)
+            return true
+        }
+        return false
     }
 
+    private static let sharedProfileLock = NSLock()
+
+    /// 文档引擎的专用配置目录，放在 Application Support，不会影响用户自己的 LibreOffice。
+    static var sharedProfile: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        return base.appendingPathComponent("Totori/lo-profile", isDirectory: true)
+    }
 
     // MARK: 音视频
 
