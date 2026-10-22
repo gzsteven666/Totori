@@ -3,7 +3,7 @@
 一个本地自用的 macOS 文件格式转换器：菜单栏常驻，把文件拖进去，选个目标格式，转换完直接在访达里看。
 参考 [Tangerine](https://apps.apple.com/) 的交互形态，转换后端全部换成系统 API 与开源命令行工具，中文界面。
 
-- 版本：0.3.8 (29)
+- 源码版本：0.3.9 (30)；已发布安装包见 Releases
 - 构建：不需要 Xcode，只用 Command Line Tools（`swiftc` + 手工组装 `.app`）
 - 运行：Apple Silicon、macOS 13+；Releases 完整包内置 `ffmpeg`/`ffprobe`、`cwebp` 和 LibreOffice，无需 Homebrew。源码的普通开发构建使用本机工具。
 
@@ -49,6 +49,10 @@
 
 ## 构建与运行
 
+Excel（`.xlsx` / `.xls`）转 PDF 时，主窗口提供“Excel 排版”：默认“保留原表设置”；选择“适配页宽”后，使用临时副本按 A4 横向、1 页宽、高度自动导出。长表仍沿纵向分页，不改动原表。批次开始后固定此选项，重试沿用原批次设置；花瓣和其他快捷入口保留原表设置。
+
+文档转换使用 App 自带的 `fonts.conf` 查找 macOS 系统及用户字体，不依赖 Homebrew 的字体配置。缺少原字体时使用可用字体替代，字体外观和换行可能不同。
+
 ```bash
 ./build.sh                       # 产出 Totori.app
 open "Totori.app"               # 启动（菜单栏出现图标，同时打开主窗口）
@@ -73,6 +77,8 @@ open "Totori.app"               # 启动（菜单栏出现图标，同时打开�
 `--selftest` 生成合成样本，覆盖 26 项：图片、文档和音视频转换，同名避让、标注、修剪、压缩、二维码、PDF 合并与拆页等。本机 26 项通过；这不代表所有输入文件或所有系统版本均已验证。
 
 新增 `--probe-favorites`（常用顺序、呼出快照、更多分流）及 `--probe-shelf-enhancements`（浮窗反馈、紧凑模式与拖动状态）。
+
+`--probe-document-pdf` 使用合成中文宽表、长表和 XLS，检查中文文本、横向页宽适配、纵向分页、批次参数快照及原件字节；可追加本地 Excel 路径进行独立验收，样本不写入仓库。
 
 已有 `--probe-task-options`（真实写出范围、质量快照、取消/重试）与 `--probe-output-summary`（体积摘要语义）。
 

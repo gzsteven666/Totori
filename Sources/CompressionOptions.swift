@@ -40,6 +40,7 @@ struct CompressionOptions {
     var maxSide: CGFloat? = nil
     var videoCRF: Int = 22
     var preset: CompressionPreset? = nil
+    var spreadsheetPDFLayout: SpreadsheetPDFLayout = .original
 
     /// 视频码率：只有选了档位才覆盖，未选时保持原有的 6M/8M
     func videoBitrate(fallback: String) -> String {

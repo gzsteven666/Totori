@@ -39,6 +39,8 @@ Totori 使用本地签名，**尚未经过 Apple Developer ID 签名及公证**�
 
 ## 格式范围
 
+源码 0.3.9 (30) 修复文档转 PDF 的中文字体发现：使用 App 内独立配置读取系统及用户字体。Excel（`.xlsx` / `.xls`）转 PDF 新增“Excel 排版”选项，默认保留原表设置；“适配页宽”按 A4 横向、1 页宽、高度自动导出，不修改原件。该选项位于主窗口，长表仍纵向分页。已发布的完整安装包版本以 Releases 为准。
+
 | 类型 | 常用输出 |
 | --- | --- |
 | 图片 | PNG、JPEG、HEIC、TIFF、WebP、PDF 等 |
@@ -75,6 +77,7 @@ python3 scripts/package-release.py --runtime-work-dir "$PWD/work/portable" --out
 ```sh
 "/Applications/Totori.app/Contents/MacOS/XiaoJuConvert" --probe-runtime
 "/Applications/Totori.app/Contents/MacOS/XiaoJuConvert" --selftest
+"/Applications/Totori.app/Contents/MacOS/XiaoJuConvert" --probe-document-pdf
 ```
 
 `--probe-runtime` 检查四个引擎均来自当前 App；`--selftest` 生成合成样本并测试转换。测试时先退出正在运行的 Totori。分发检查脚本 `scripts/verify-release.py` 还会检查架构、签名与非系统动态依赖。

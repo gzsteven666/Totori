@@ -49,7 +49,7 @@ def main():
                 issues.append(f'{p.relative_to(app)}: requires macOS {version}')
         records.append({'path': str(p.relative_to(app)), 'architectures': arch,
                         'minimumOS': versions, 'installIDs': install_ids, 'dependencies': dependencies})
-    for name in ['Helpers/ffmpeg', 'Helpers/ffprobe', 'Helpers/cwebp', 'Frameworks/LibreOffice.app/Contents/MacOS/soffice']:
+    for name in ['Helpers/ffmpeg', 'Helpers/ffprobe', 'Helpers/cwebp', 'Frameworks/LibreOffice.app/Contents/MacOS/soffice', 'Resources/fonts.conf']:
         if not (app / 'Contents' / name).is_file(): issues.append(f'Missing {name}')
     report = {'version': info['CFBundleShortVersionString'], 'build': info['CFBundleVersion'],
               'signature': 'verified', 'machOCount': len(records), 'issues': issues, 'binaries': records}

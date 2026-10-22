@@ -1,5 +1,11 @@
 import AppKit
 
+if let index = CommandLine.arguments.firstIndex(of: "--probe-document-pdf") {
+    let source = CommandLine.arguments.count > index + 1
+        ? URL(fileURLWithPath: CommandLine.arguments[index + 1]) : nil
+    exit(MainActor.assumeIsolated { DocumentPDFProbe.run(source: source) })
+}
+
 // 无 GUI 的分发自检：确认工具来自当前 App，而不是开发机路径。
 if CommandLine.arguments.contains("--probe-runtime") {
     var failed = false

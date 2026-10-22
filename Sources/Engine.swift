@@ -130,6 +130,7 @@ enum Shell {
                     stdoutTo file: URL? = nil,
                     captureOutput: Bool = false,
                     timeout: TimeInterval = 0,
+                    currentDirectory: URL? = nil,
                     cancellation: ConversionCancellation? = nil,
                     onStdoutLine: ((String) -> Void)? = nil) throws -> Result {
         let cancellation = cancellation ?? ConversionCancellation.current
@@ -137,10 +138,15 @@ enum Shell {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        process.currentDirectoryURL = currentDirectory
         var environment = ProcessInfo.processInfo.environment
         if URL(fileURLWithPath: executable).lastPathComponent == "soffice" {
             // 禁止文档引擎在已签名的包内重写 Python 字节码缓存，保持搬移后签名有效。
             environment["PYTHONDONTWRITEBYTECODE"] = "1"
+            guard let fonts = Bundle.main.url(forResource: "fonts", withExtension: "conf") else {
+                throw ConversionError.failed("文档引擎缺少字体配置，请重新安装 Totori")
+            }
+            environment["FONTCONFIG_FILE"] = fonts.path
         }
         process.environment = environment
 
@@ -270,7 +276,8 @@ enum Engine {
                 try convertImage(source: source, ext: ext, destination: pending,
                                  stripMetadata: stripMetadata, options: options, progress: progress)
             case .document:
-                try convertDocument(source: source, ext: ext, destination: pending, progress: progress)
+                try convertDocument(source: source, ext: ext, destination: pending,
+                                    layout: options.spreadsheetPDFLayout, progress: progress)
             case .media:
                 try convertMedia(source: source, format: format, destination: pending,
                                  options: options, progress: progress)
@@ -463,6 +470,7 @@ enum Engine {
     private static func convertDocument(source: URL,
                                         ext: String,
                                         destination: URL,
+                                        layout: SpreadsheetPDFLayout,
                                         progress: @escaping (Double) -> Void) throws {
         progress(0.05)
 
@@ -477,6 +485,7 @@ enum Engine {
                                       filter: source.pathExtension.lowercased() == "svg"
                                           ? nil : libreOfficeFilter(for: ext),
                                       destination: destination,
+                                      layout: layout,
                                       progress: progress) {
                 return
             }
@@ -523,6 +532,7 @@ enum Engine {
                                            source: URL,
                                            filter: String?,
                                            destination: URL,
+                                           layout: SpreadsheetPDFLayout = .original,
                                            progress: @escaping (Double) -> Void) throws -> Bool {
         let staging = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("xiaoju-lo-\(UUID().uuidString)")
@@ -532,12 +542,27 @@ enum Engine {
         // 每次转换单独使用配置目录，避免与用户打开的 LibreOffice 或其他转换共享进程。
         let profile = staging.appendingPathComponent("profile", isDirectory: true)
 
+        var input = source
+        if layout == .fitWidth, destination.pathExtension.lowercased() == "pdf",
+           SpreadsheetPDFLayout.supports(source) {
+            if source.pathExtension.lowercased() == "xls" {
+                let intermediate = staging.appendingPathComponent("intermediate.xlsx")
+                guard try libreOfficeConvert(soffice: soffice, source: source,
+                    filter: "xlsx:Calc MS Excel 2007 XML", destination: intermediate,
+                    progress: { _ in }) else {
+                    throw ConversionError.failed("无法为此 Excel 创建页宽适配副本")
+                }
+                input = intermediate
+            }
+            input = try SpreadsheetPDFLayout.fitWidthCopy(of: input, in: staging)
+        }
+
         let args = [
             "--headless", "--norestore", "--nolockcheck", "--nodefault",
             "-env:UserInstallation=\(profile.absoluteString)",
             "--convert-to", filter ?? destination.pathExtension,
             "--outdir", staging.path,
-            source.path,
+            input.path,
         ]
 
         do {

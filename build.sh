@@ -45,7 +45,7 @@ swiftc -O -swift-version 5 -target arm64-apple-macos13.0 \
   -sdk "$SDK" -o "$BIN" "${SOURCES[@]}"
 
 cp "$ROOT/Resources/Info.plist" "$NEW_APP/Contents/Info.plist"
-for resource in AppIcon.icns menubar.png menubar@2x.png totori-paw-open.png totori-paw-grasp.png; do
+for resource in AppIcon.icns menubar.png menubar@2x.png totori-paw-open.png totori-paw-grasp.png fonts.conf; do
   cp "$ROOT/Resources/$resource" "$NEW_APP/Contents/Resources/$resource"
 done
 if [ -n "$RUNTIME" ]; then
@@ -72,7 +72,7 @@ IDENTITY="XiaoJu Local Signer"
 if security find-identity -v -p codesigning 2>/dev/null | grep -q "$IDENTITY"; then
   SIGNER="$IDENTITY"
 else
-  echo "未找到 $IDENTITY，使用 ad-hoc 签名"
+  echo "未找到 ${IDENTITY}，使用 ad-hoc 签名"
   SIGNER="-"
 fi
 if [ -n "$RUNTIME" ]; then

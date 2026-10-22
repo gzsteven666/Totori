@@ -40,6 +40,7 @@ final class AppModel: ObservableObject {
     @Published var useSourceFolder = true
     @Published var stripMetadata = false
     @Published var taskQuality: TaskConversionQuality = .defaults
+    @Published var spreadsheetPDFLayout: SpreadsheetPDFLayout = .original
     @Published var outputDirectory: URL = FileManager.default
         .urls(for: .downloadsDirectory, in: .userDomainMask).first
         ?? URL(fileURLWithPath: NSHomeDirectory())
@@ -74,6 +75,10 @@ final class AppModel: ObservableObject {
 
     // 选中的文件属于哪一类（取第一个文件的类型）
     var currentKind: FileKind? { files.first?.kind }
+
+    var supportsSpreadsheetPDFLayout: Bool {
+        selectedFormat?.ext == "pdf" && files.contains { SpreadsheetPDFLayout.supports($0.url) }
+    }
 
     var availableFormats: [OutputFormat] {
         guard let kind = currentKind else { return [] }
@@ -159,6 +164,7 @@ final class AppModel: ObservableObject {
         metadataRevision += 1
         selectedFormat = nil
         taskQuality = .defaults
+        spreadsheetPDFLayout = .original
         importNotice = nil
         progress = 0
         statusText = "把文件拖进窗口，或点「选择文件」"
@@ -191,7 +197,8 @@ final class AppModel: ObservableObject {
     /// 固定新批次的范围与参数。新批次替换上次状态，但不删除磁盘上的任何文件。
     private func beginBatch(jobs: [InputFile]) {
         guard !isConverting, let format = selectedFormat, !jobs.isEmpty else { return }
-        let options = format.supportsTaskQuality ? taskQuality.options : .none
+        var options = format.supportsTaskQuality ? taskQuality.options : .none
+        if supportsSpreadsheetPDFLayout { options.spreadsheetPDFLayout = spreadsheetPDFLayout }
         let plan = BatchPlan(jobs: jobs, format: format,
                              targets: Dictionary(uniqueKeysWithValues: jobs.map { ($0.id, targetDirectory(for: $0)) }),
                              stripMetadata: stripMetadata, options: options)
@@ -664,6 +671,21 @@ struct ContentView: View {
 
     private var options: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if model.supportsSpreadsheetPDFLayout {
+                HStack(spacing: 12) {
+                    Text("Excel 排版").font(.system(size: 12)).foregroundStyle(Palette.textSecondary)
+                        .frame(width: 60, alignment: .leading)
+                    Picker("Excel 排版", selection: $model.spreadsheetPDFLayout) {
+                        ForEach(SpreadsheetPDFLayout.allCases) { layout in
+                            Text(layout.title).tag(layout)
+                        }
+                    }.labelsHidden().frame(width: 160)
+                        .accessibilityIdentifier("task.spreadsheet-pdf-layout")
+                    Text("适配页宽：A4 横向，1 页宽，高度自动")
+                        .font(.system(size: 11)).foregroundStyle(Palette.textSecondary)
+                    Spacer(minLength: 0)
+                }
+            }
             HStack(spacing: 12) {
                 Text("输出格式").font(.system(size: 12)).foregroundStyle(Palette.textSecondary)
                     .frame(width: 60, alignment: .leading)
