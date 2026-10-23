@@ -880,6 +880,12 @@ enum FanRender {
             model.fileLabel = "HEIC"
             model.pawPhase = .grasp  // 静态展示"抓住"这一帧
             model.debugPrintsElapsed = 2.6   // 冥滩：展示手印已经逼近了一段时间的样子
+            // 冥滩：选中花瓣的涟漪/气泡时刻，可用 `--stir-time 秒` 指定
+            if let index = CommandLine.arguments.firstIndex(of: "--stir-time"), CommandLine.arguments.count > index + 1 {
+                model.debugStirringTime = Double(CommandLine.arguments[index + 1])
+            } else {
+                model.debugStirringTime = 0.5
+            }
 
             let renderer = ImageRenderer(content:
                 FanView(model: model)

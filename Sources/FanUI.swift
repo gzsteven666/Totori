@@ -10,6 +10,8 @@ struct FanView: View {
     private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
     /// 冥滩主题：本次轮盘出现的时刻，手印按它推算逼近的进度
     @State private var printsStart = Date()
+    /// 冥滩主题：当前花瓣被选中的时刻，涟漪从这一刻荡开
+    @State private var hotSince = Date()
 
     var body: some View {
         ZStack {
@@ -47,6 +49,7 @@ struct FanView: View {
         }
         .frame(width: model.canvas, height: model.canvas)
         .animation(.spring(response: 0.28, dampingFraction: 0.82), value: model.mode)
+        .onChange(of: model.highlighted) { _ in hotSince = Date() }
         .drawingGroup()          // 合成到一层，减少每帧重绘（跟手的关键）
     }
 
@@ -340,10 +343,18 @@ struct FanView: View {
                 if theme.isBeach {
                     // 冥滩：一坨不规则的焦油，底部往下滴；滴痕画在花瓣下方，不占文字位置
                     let drip = model.petalHeight * 0.62
-                    GelPetalCache.view(theme: theme, title: item.title, hot: hot, dark: colorScheme == .dark,
-                                       size: CGSize(width: model.petalWidth, height: model.petalHeight + drip)) {
-                        TarPetal(seed: Self.gelSeed(item.title), hot: hot,
-                                 bodyRatio: model.petalHeight / (model.petalHeight + drip))
+                    let ratio = model.petalHeight / (model.petalHeight + drip)
+                    ZStack {
+                        GelPetalCache.view(theme: theme, title: item.title, hot: hot, dark: colorScheme == .dark,
+                                           size: CGSize(width: model.petalWidth, height: model.petalHeight + drip)) {
+                            TarPetal(seed: Self.gelSeed(item.title), hot: hot, bodyRatio: ratio)
+                        }
+                        // 选中：焦油表面荡开涟漪、偶尔冒泡（只在被选中的这片上动，其余保持静止的缓存图）
+                        if hot {
+                            TarStirring(seed: Self.gelSeed(item.title), bodyRatio: ratio, since: hotSince,
+                                        fixedTime: model.debugStirringTime)
+                                .frame(width: model.petalWidth, height: model.petalHeight + drip)
+                        }
                     }
                     .offset(y: drip / 2)
                 } else {
@@ -359,17 +370,6 @@ struct FanView: View {
                 }
             }
         )
-        // 冥滩：选中的花瓣上留下一个 BT 手印，像被按住
-        .overlay(alignment: .trailing) {
-            if hot && theme.isBeach {
-                BTHandprint(seed: Self.gelSeed(item.title), gravity: .degrees(-14))
-                    .frame(width: model.petalHeight * 0.48, height: model.petalHeight * 0.78)
-                    .rotationEffect(.degrees(-14))
-                    .opacity(0.75)
-                    .padding(.trailing, 8)
-                    .allowsHitTesting(false)
-            }
-        }
     }
 }
 

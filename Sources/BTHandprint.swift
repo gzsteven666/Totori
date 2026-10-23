@@ -396,3 +396,127 @@ struct TarPetal: View {
         .shadow(color: .black.opacity(0.55), radius: 3, y: 2)
     }
 }
+
+/// 冥滩：被选中的焦油花瓣表面的动静。
+///
+/// - 涟漪：选中那一刻从焦油中心荡开一圈，之后每 2.4 秒再轻轻荡一圈；画成扁椭圆，像从斜上方看液面；
+/// - 冒泡：每隔一会儿有一个小气泡从焦油底部浮上来，到表面后破开成一圈小环再消失，像底下有东西在动。
+/// 全部裁在焦油主体轮廓里，不碰滴痕。按时间推算，不保存状态；系统开“减少动态效果”时只留一圈静止的淡涟漪。
+struct TarStirring: View {
+    var seed: UInt64
+    var bodyRatio: CGFloat
+    var since: Date
+    /// 自检渲染用：固定已逝时间（离屏渲染没有时间流逝）
+    var fixedTime: Double? = nil
+
+    var body: some View {
+        GeometryReader { geometry in
+            let size = geometry.size
+            let bodyHeight = size.height * bodyRatio
+            let center = CGPoint(x: size.width / 2, y: bodyHeight * 0.55)
+            Group {
+                if Palette.reduceMotion {
+                    ripple(progress: 0.5, strength: 0.5, center: center, size: size, bodyHeight: bodyHeight)
+                } else {
+                    TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+                        let t = fixedTime ?? max(0, context.date.timeIntervalSince(since))
+                        ZStack {
+                            // 第一圈最明显，之后的较淡
+                            let period = 2.4
+                            let cycle = Int(t / period)
+                            let local = t - Double(cycle) * period
+                            ripple(progress: local / 1.6, strength: cycle == 0 ? 1 : 0.55,
+                                   center: center, size: size, bodyHeight: bodyHeight)
+                            ripple(progress: (local - 0.28) / 1.6, strength: cycle == 0 ? 0.6 : 0.3,
+                                   center: center, size: size, bodyHeight: bodyHeight)
+                            bubbles(time: t, size: size, bodyHeight: bodyHeight)
+                        }
+                    }
+                }
+            }
+            // clipShape 比 mask 便宜（不需要额外的离屏图层）；轮廓缓存起来，不每帧重算
+            .clipShape(FixedPath(path: TarOutlineCache.outline(seed: seed, body: bodyRatio, size: size)))
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// 一圈涟漪：progress 从 0 到 1 由中心扩到边缘并淡出
+    @ViewBuilder
+    private func ripple(progress: Double, strength: Double, center: CGPoint, size: CGSize, bodyHeight: CGFloat) -> some View {
+        if progress > 0, progress < 1 {
+            let eased = 1 - pow(1 - progress, 2.2)
+            let width = size.width * 0.95 * CGFloat(eased)
+            Ellipse()
+                // 不加模糊（每帧模糊开销大），靠线宽变细和透明度衰减表现扩散变淡
+                .stroke(Color.white.opacity(0.26 * strength * (1 - progress)), lineWidth: 1.2 - CGFloat(progress) * 0.6)
+                .frame(width: width, height: width * bodyHeight / size.width * 0.75)
+                .position(center)
+        }
+    }
+
+    /// 气泡：每 0.9 秒一个，各自用 0.9 秒浮到表面，再用 0.3 秒破开
+    private func bubbles(time: Double, size: CGSize, bodyHeight: CGFloat) -> some View {
+        let interval = 0.9, rise = 0.9, pop = 0.3
+        let newest = Int(time / interval)
+        return ZStack {
+            ForEach(max(0, newest - 2)...newest, id: \.self) { index in
+                let age = time - Double(index) * interval
+                // 刚选中的前 0.4 秒不冒泡，让第一圈涟漪先出现
+                if index > 0 || time > 0.4 {
+                    bubble(index: index, age: age, rise: rise, pop: pop, size: size, bodyHeight: bodyHeight)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func bubble(index: Int, age: Double, rise: Double, pop: Double, size: CGSize, bodyHeight: CGFloat) -> some View {
+        var random = SplitMix64(seed: seed &+ UInt64(index) &* 0x2545F491)
+        // 约一半的时段不冒泡，显得是“偶尔”
+        let shows = random.unit() < 0.55
+        let x = size.width * (0.22 + random.unit() * 0.56)
+        let radius = 1.6 + random.unit() * 1.6
+        let startY = bodyHeight * 0.86, surfaceY = bodyHeight * (0.3 + random.unit() * 0.15)
+        if shows && age >= 0 && age < rise + pop {
+            if age < rise {
+                let p = CGFloat(age / rise)
+                let y = startY + (surfaceY - startY) * (1 - pow(1 - p, 2))
+                Circle()
+                    .fill(Color.black.opacity(0.6))
+                    .overlay(Circle().stroke(Color.white.opacity(0.38), lineWidth: 0.6))
+                    .overlay(Circle().fill(Color.white.opacity(0.5)).frame(width: radius * 0.6, height: radius * 0.6)
+                        .offset(x: -radius * 0.3, y: -radius * 0.3))
+                    .frame(width: radius * 2 * (0.7 + 0.3 * p), height: radius * 2 * (0.7 + 0.3 * p))
+                    .position(x: x + CGFloat(sin(age * 9 + Double(index))) * 0.8, y: y)
+                    .opacity(Double(min(1, p * 4)))
+            } else {
+                // 破开：一圈小环扩开后消失
+                let p = (age - rise) / pop
+                Ellipse()
+                    .stroke(Color.white.opacity(0.4 * (1 - p)), lineWidth: 0.7)
+                    .frame(width: radius * 2 * (1 + 2.2 * CGFloat(p)), height: radius * (1 + 2.2 * CGFloat(p)))
+                    .position(x: x, y: surfaceY)
+            }
+        }
+    }
+}
+
+/// 已经算好的路径，直接当形状用
+struct FixedPath: Shape {
+    var path: Path
+    func path(in rect: CGRect) -> Path { path }
+}
+
+/// 焦油花瓣主体轮廓的缓存：选中花瓣每帧都要用它裁切涟漪和气泡，轮廓本身不会变
+@MainActor
+enum TarOutlineCache {
+    private static var paths: [String: Path] = [:]
+
+    static func outline(seed: UInt64, body: CGFloat, size: CGSize) -> Path {
+        let key = "\(seed)|\(Int(body * 1000))|\(Int(size.width))x\(Int(size.height))"
+        if let cached = paths[key] { return cached }
+        let path = TarBlobShape(seed: seed, body: body, outlineOnly: true).path(in: CGRect(origin: .zero, size: size))
+        paths[key] = path
+        return path
+    }
+}
