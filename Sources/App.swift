@@ -61,8 +61,7 @@ struct TotoriApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appInfo) {
-                Button("显示主窗口") { openMainWindow() }
-                    .keyboardShortcut("0", modifiers: .command)
+                ShowMainWindowButton(title: "显示主窗口")
             }
             // 标准设置命令：⌘, 在任何前台状态都能打开
             CommandGroup(replacing: .appSettings) {
@@ -112,10 +111,34 @@ struct TotoriApp: App {
         else { FanController.shared.showMenu(mode: mode, urls: model.files.map(\.url)) }
     }
 
-    private func openMainWindow() {
-        NSApp.activate(ignoringOtherApps: true)
-        for window in NSApp.windows where window.canBecomeMain {
-            window.makeKeyAndOrderFront(nil)
+}
+
+/// 显示主窗口：窗口还在（包括被隐藏、最小化）就调到前面；已经关闭就重新创建。
+///
+/// 只遍历现有窗口是不够的：SwiftUI 的 WindowGroup 窗口关闭后会被销毁，
+/// 之后 `NSApp.windows` 里根本没有主窗口，点菜单就毫无反应。
+struct ShowMainWindowButton: View {
+    var title: String
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button(title) {
+            NSApp.activate(ignoringOtherApps: true)
+            if let window = Self.existingMainWindow {
+                if window.isMiniaturized { window.deminiaturize(nil) }
+                window.makeKeyAndOrderFront(nil)
+            } else {
+                openWindow(id: "main")
+            }
+        }
+        .keyboardShortcut("0", modifiers: .command)
+    }
+
+    /// WindowGroup("Totori", id: "main") 生成的窗口：identifier 以 "main" 开头；
+    /// 万一系统版本的命名规则不同，再按标题兜底（工具窗口都是 NSPanel，标题也不同）
+    static var existingMainWindow: NSWindow? {
+        NSApp.windows.first { window in
+            !(window is NSPanel) && (window.identifier?.rawValue.hasPrefix("main") == true || window.title == "Totori")
         }
     }
 }
@@ -190,13 +213,7 @@ struct MenuBarContent: View {
             FanController.shared.showAtMouse()
         }
 
-        Button("打开主窗口") {
-            NSApp.activate(ignoringOtherApps: true)
-            for window in NSApp.windows where window.canBecomeMain {
-                window.makeKeyAndOrderFront(nil)
-            }
-        }
-        .keyboardShortcut("0", modifiers: .command)
+        ShowMainWindowButton(title: "打开主窗口")
 
         if !model.files.isEmpty {
             Button("开始转换") { model.convertAll() }
