@@ -602,6 +602,12 @@ final class FanController {
         return true
     }
 
+    /// 自检用：换了花瓣后按新尺寸重新摆放窗口
+    func debugRelayout() {
+        guard let panel else { return }
+        position(panel, at: NSEvent.mouseLocation)
+    }
+
     /// 自检用
     func showForDebug(mode: FanMode, urls: [URL]) {
         cachedURLs = urls

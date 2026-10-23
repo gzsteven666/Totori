@@ -150,40 +150,48 @@ struct FanView: View {
         }
     }
 
-    // 森林凝胶底盘：薄雾 + 一圈细边
-    private var backdrop: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            theme.tint.opacity(0.13),
-                            theme.tint.opacity(0.045),
-                            Color.clear,
-                        ],
-                        center: .center,
-                        startRadius: 12,
-                        endRadius: model.canvas / 2
-                    )
-                )
+    /// 底盘直径，与 `FanGlassBackdrop.discDiameter` 一致
+    private var discDiameter: CGFloat { model.radius * 2 + 26 }
 
+    /// 凝胶底盘的光影层，叠在系统玻璃上面。
+    /// 系统玻璃负责“透”；这里补上凝胶的“厚”：边缘一圈更浓的主题色、左上弧形高光、
+    /// 底部内侧汇聚的透光。中心保持干净，不再铺一层雾，背后的桌面才看得清。
+    private var backdrop: some View {
+        let d = discDiameter
+        return ZStack {
+            // 边缘加厚：越靠边越浓，中间几乎无色
             Circle()
-                .strokeBorder(
-                    AngularGradient(
-                        colors: [
-                            Color.white.opacity(0.55),
-                            theme.tint.opacity(0.18),
-                            Color.white.opacity(0.28),
-                            theme.tint.opacity(0.10),
-                            Color.white.opacity(0.55),
-                        ],
-                        center: .center
-                    ),
-                    lineWidth: 0.8
-                )
-                .frame(width: model.radius * 2 + 26, height: model.radius * 2 + 26)
-                .blur(radius: 0.3)
+                .fill(RadialGradient(stops: [.init(color: .clear, location: 0),
+                                             .init(color: .clear, location: 0.70),
+                                             .init(color: theme.tint.opacity(0.10), location: 0.90),
+                                             .init(color: theme.tint.opacity(0.22), location: 1)],
+                                     center: .center, startRadius: 0, endRadius: d / 2))
+            // 底部内侧透光：光穿过凝胶在下沿汇聚
+            Circle()
+                .trim(from: 0.12, to: 0.38)
+                .stroke(Color.white.opacity(0.55), style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                .blur(radius: 7)
+                .padding(9)
+            // 左上弧形高光：像窗户在球面上的反光
+            Circle()
+                .trim(from: 0.56, to: 0.80)
+                .stroke(LinearGradient(colors: [Color.white.opacity(0), Color.white.opacity(0.85),
+                                                Color.white.opacity(0)],
+                                       startPoint: .leading, endPoint: .trailing),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .blur(radius: 1.2)
+                .padding(7)
+            // 外轮廓：上亮下带主题色
+            Circle()
+                .strokeBorder(LinearGradient(colors: [Color.white.opacity(0.80), Color.white.opacity(0.20),
+                                                      theme.tint.opacity(0.45)],
+                                             startPoint: .top, endPoint: .bottom),
+                              lineWidth: 1.2)
         }
+        .frame(width: d, height: d)
+        .clipShape(Circle())
+        .position(model.center)
+        .allowsHitTesting(false)
     }
 
     private var readingPill: some View {
@@ -266,6 +274,11 @@ struct FanView: View {
     }
 
     /// 水滴凝胶：高透明 + 顶部反光 + 白边
+    /// 按标题算一个稳定的种子（`hashValue` 每次启动都不同），同一片花瓣的气泡位置保持不变。
+    private static func gelSeed(_ title: String) -> UInt64 {
+        title.unicodeScalars.reduce(5381) { ($0 &* 33) &+ UInt64($1.value) }
+    }
+
     private func petal(item: FanItem, hot: Bool) -> some View {
         HStack(spacing: 6) {
             // 拷贝路径只显示文字，避免本地化文字图标被误认为路径内容。
@@ -286,69 +299,12 @@ struct FanView: View {
         .padding(.horizontal, 9)
         .frame(width: model.petalWidth, height: model.petalHeight)
         .background(
-            ZStack {
-                // 毛玻璃底
-                Capsule().fill(.ultraThinMaterial).opacity(0.32)
-                // 颜料：天蓝打底，再叠一层上白下蓝，做出透亮感
-                Capsule().fill(
-                    LinearGradient(
-                        colors: [
-                            theme.glassTop.opacity(hot ? 0.88 : 0.72),
-                            theme.glassBottom.opacity(hot ? 0.82 : 0.52),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                Capsule().fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(hot ? 0.48 : 0.38),
-                            theme.glassTop.opacity(hot ? 0.20 : 0.10),
-                            Color.clear,
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                // 顶面高光，做出水感
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(hot ? 0.85 : 0.70),
-                                Color.white.opacity(0.10),
-                                Color.clear,
-                            ],
-                            startPoint: .top,
-                            endPoint: .center
-                        )
-                    )
-                    .padding(.horizontal, 6)
-                    .padding(.top, 2)
-                    .blur(radius: 1.6)
-                // 选中：实心强调色盖在玻璃上，一眼就能和其余花瓣区分开
-                Capsule().fill(
-                    LinearGradient(colors: [theme.hotTop, theme.hotBottom],
-                                   startPoint: .top, endPoint: .bottom)
-                )
-                .opacity(hot ? 1 : 0)
-                // 软边：白在上、蓝在下，不像药丸
-                Capsule().strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(hot ? 0.90 : 0.72),
-                            theme.tint.opacity(hot ? 0.65 : 0.38),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 0.8
-                )
-            }
-            .compositingGroup()
-            .shadow(color: theme.tint.opacity(hot ? 0.40 : 0.22),
-                    radius: hot ? 18 : 13, y: hot ? 4 : 3)
+            // 凝胶花瓣：半透明胶体里悬着细小气泡；选中时胶体换成更浓的强调色
+            GelSurface(shape: Capsule(),
+                       tint: hot ? theme.hotTop : theme.glassBottom,
+                       edge: hot ? theme.hotBottom : theme.tint,
+                       seed: Self.gelSeed(item.title),
+                       density: hot ? 1.25 : 1)
         )
     }
 }

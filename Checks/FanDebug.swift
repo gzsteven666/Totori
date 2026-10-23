@@ -467,7 +467,9 @@ enum MainWindowRender {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("xj-main")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         var urls: [URL] = []
-        for name in ["旅行照片.heic", "封面设计.png", "参考图.jpg"] {
+        // `--empty` 渲染空态（拖放区与中间的爪子圆）
+        let names = CommandLine.arguments.contains("--empty") ? [] : ["旅行照片.heic", "封面设计.png", "参考图.jpg"]
+        for name in names {
             let url = dir.appendingPathComponent(name)
             if !FileManager.default.fileExists(atPath: url.path) {
                 // 写一点内容，让体积显示不是 0
@@ -829,6 +831,15 @@ enum FanCapture {
             FanController.shared.showForDebug(mode: .convert, urls: [sample])
             FanController.shared.model.appeared = true
             FanController.shared.model.bloom = 1
+            // `--hold 秒数`：把轮盘留在屏幕上（鼠标处），用系统截图检查真实的玻璃效果。
+            // 离屏 cacheDisplay 画不出系统玻璃和背后桌面的折射。
+            if let index = CommandLine.arguments.firstIndex(of: "--hold") {
+                let seconds = CommandLine.arguments.count > index + 1
+                    ? Double(CommandLine.arguments[index + 1]) ?? 15 : 15
+                FanController.shared.model.highlighted = 0
+                DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { exit(0) }
+                return
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 let ok = FanController.shared.debugCapture(to: outputPath)
                 exit(ok ? 0 : 1)

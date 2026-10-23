@@ -4,6 +4,10 @@ import AppKit
 /// 只在带 `TOTORI_CHECKS` 的构建里编译；正式包里没有这些代码。
 /// 构建方式见 README：`TOTORI_CHECKS=1 ./build.sh`。
 func runChecksIfRequested() {
+    if CommandLine.arguments.contains("--bench-fan") {
+        exit(MainActor.assumeIsolated { FanFrameBench.run() })
+    }
+
     if CommandLine.arguments.contains("--probe-menu-mode") {
         exit(MainActor.assumeIsolated { MenuModeProbe.run() })
     }

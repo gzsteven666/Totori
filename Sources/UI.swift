@@ -129,18 +129,14 @@ struct ContentView: View {
     private var emptyState: some View {
         VStack(spacing: 20) {
             Spacer(minLength: 12)
-            ZStack {
-                Circle().fill(LinearGradient(colors: [Palette.glassTop, Palette.glassBottom],
-                                             startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .overlay(Circle().strokeBorder(Color.white.opacity(0.7), lineWidth: 1))
-                    .shadow(color: Palette.brand.opacity(0.12), radius: 14, y: 6)
+            JellyOrb(diameter: 104, active: isTargeted) {
                 if let paw = PawAssets.open {
-                    Image(nsImage: paw).resizable().scaledToFit().padding(17)
+                    Image(nsImage: paw).resizable().scaledToFit()
                 } else {
                     Image(systemName: "tray.and.arrow.down").font(.system(size: 30, weight: .light))
                         .foregroundStyle(Palette.brand)
                 }
-            }.frame(width: 92, height: 92).accessibilityHidden(true)
+            }.accessibilityHidden(true)
             VStack(spacing: 9) {
                 Text("把文件拖到这里").font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(Palette.textPrimary)
