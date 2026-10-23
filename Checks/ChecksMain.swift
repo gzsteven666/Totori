@@ -11,8 +11,12 @@ func runChecksIfRequested() {
         let path = CommandLine.arguments[index + 1]
         let ok: Bool = MainActor.assumeIsolated {
             let grid = HStack(spacing: 30) {
+                // 左右手交替；最后两个转了方向，用来检查滴痕是否仍朝下
                 ForEach(1...6, id: \.self) { seed in
-                    BTHandprint(seed: UInt64(seed) &+ 11).frame(width: 124, height: 200)
+                    let angle = Angle.degrees(seed >= 5 ? (seed == 5 ? 60 : -90) : 0)
+                    BTHandprint(seed: UInt64(seed) &+ 11, mirrored: seed % 2 == 0, gravity: angle)
+                        .frame(width: 124, height: 200)
+                        .rotationEffect(angle)
                 }
             }
             .padding(30)

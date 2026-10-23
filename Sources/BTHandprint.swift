@@ -1,145 +1,161 @@
 import SwiftUI
 
-/// 冥滩主题的 BT 手印：一只张开的手按下后往下淌的痕迹，手指朝上（-y）。
+/// 冥滩主题的 BT 手印，手指朝上（-y）。
 ///
-/// 风格参考《死亡搁浅 2》封面上的银色手印，但形状是程序生成的原创图形，不描摹官方图案：
-/// - 掌心是边缘不规则的团块；
-/// - 四指和拇指都断成两三截，截与截之间留缝，指尖圆；
-/// - 掌缘和指根垂下一串细长滴痕，末端鼓成水滴；旁边偶尔甩出一小块分离的残迹。
-/// 比例约为宽 0.62 : 高 1（滴痕占下半部分）。长短、断口、滴痕按种子抖动，同一种子每次一样。
+/// 形状参考了游戏实机里 BT 出现时地上的手印（细长张开的手指、窄掌根、左右手交替爬行），
+/// 外观参考《死亡搁浅 2》封面的美术处理（印痕断续、往下淌的滴痕、细碎飞溅）。
+/// 图形是程序生成的原创形状，不描摹任何官方图案。
+/// - `mirrored`：右手（默认是拇指在右侧的左手），轨迹里左右交替用；
+/// - `gravity`：这个手印在屏幕上会被转多少度。滴痕按它反向计算，所以不管手朝哪边，滴痕都往屏幕下方流。
+/// 比例约为宽 0.62 : 高 1。长短、弯曲、断口、滴痕都按种子抖动，同一组参数每次画出来一样。
 struct HandprintShape: Shape {
     var seed: UInt64 = 1
+    var mirrored = false
+    var gravity: Angle = .zero
 
     func path(in rect: CGRect) -> Path {
         var random = SplitMix64(seed: seed)
         func jitter(_ amount: CGFloat) -> CGFloat { (random.unit() - 0.5) * 2 * amount }
         let w = rect.width, h = rect.height
         func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * w, y: rect.minY + y * h) }
-
-        var path = Path()
-
-        // 掌心：沿椭圆取 22 个点各自抖动半径，再用二次曲线连起来，边缘就毛糙不规则
-        let palmCenter = point(0.50, 0.53)
-        let rx = w * 0.27, ry = h * 0.12
-        let corners = 40
-        var outline: [CGPoint] = []
-        for i in 0..<corners {
-            let t = Double(i) / Double(corners) * 2 * .pi
-            // 低频起伏决定大轮廓，再叠一点高频抖动，边缘像真实的印痕一样毛糙
-            let k = 1 + jitter(0.18) + CGFloat(sin(t * 7 + Double(seed % 13))) * 0.04
-            outline.append(CGPoint(x: palmCenter.x + CGFloat(cos(t)) * rx * k,
-                                   y: palmCenter.y + CGFloat(sin(t)) * ry * k))
-        }
         func mid(_ a: CGPoint, _ b: CGPoint) -> CGPoint { CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2) }
-        path.move(to: mid(outline[corners - 1], outline[0]))
-        for i in 0..<corners {
-            path.addQuadCurve(to: mid(outline[i], outline[(i + 1) % corners]), control: outline[i])
-        }
-        path.closeSubpath()
-        // 掌缘再溅几块小斑，打破整齐的轮廓
-        for _ in 0..<6 {
-            let t = Double(random.unit()) * 2 * .pi
-            let center = CGPoint(x: palmCenter.x + CGFloat(cos(t)) * rx * 1.02, y: palmCenter.y + CGFloat(sin(t)) * ry * 1.02)
-            let r = w * (0.02 + random.unit() * 0.035)
-            path.addEllipse(in: CGRect(x: center.x - r, y: center.y - r * 0.8, width: r * 2, height: r * 1.6))
-        }
 
-        // 手指：(根部 x, 根部 y, 长度, 粗细, 角度°)；每根断成 2–3 截
-        let fingers: [(CGFloat, CGFloat, CGFloat, CGFloat, CGFloat)] = [
-            (0.31, 0.49, 0.29, 0.085, -7),
-            (0.44, 0.46, 0.38, 0.095, -2),
-            (0.57, 0.46, 0.37, 0.095, 3),
-            (0.69, 0.49, 0.30, 0.085, 9),
-            (0.73, 0.58, 0.22, 0.09, 30),    // 拇指，向外张开
+        var hand = Path()
+
+        // 掌心：指根一线宽、掌根窄，像真实手掌按下去的形状；锚点各自抖动后用曲线连成毛糙的轮廓
+        let anchors: [(CGFloat, CGFloat)] = [
+            (0.25, 0.48), (0.37, 0.445), (0.50, 0.435), (0.63, 0.445), (0.73, 0.49),
+            (0.76, 0.57), (0.71, 0.66), (0.62, 0.73), (0.50, 0.755), (0.39, 0.735),
+            (0.31, 0.67), (0.25, 0.58),
         ]
-        for (index, (x, y, length, width, degrees)) in fingers.enumerated() {
-            let total = h * length * (1 + jitter(0.12))
-            let thick = w * width * (1 + jitter(0.15))
+        var outline: [CGPoint] = []
+        for (index, (x, y)) in anchors.enumerated() {
+            outline.append(point(x + jitter(0.025), y + jitter(0.018)))
+            // 相邻锚点之间再插一个抖动更大的点，边缘才有细碎的起伏
+            let (nx, ny) = anchors[(index + 1) % anchors.count]
+            outline.append(point((x + nx) / 2 + jitter(0.02), (y + ny) / 2 + jitter(0.015)))
+        }
+        hand.move(to: mid(outline[outline.count - 1], outline[0]))
+        for i in outline.indices {
+            hand.addQuadCurve(to: mid(outline[i], outline[(i + 1) % outline.count]), control: outline[i])
+        }
+        hand.closeSubpath()
+
+        // 手指：(根部 x, 根部 y, 长度, 根部粗细, 角度°)，从左到右是小指、无名指、中指、食指、拇指
+        let fingers: [(CGFloat, CGFloat, CGFloat, CGFloat, CGFloat)] = [
+            (0.29, 0.50, 0.24, 0.078, -21),
+            (0.39, 0.465, 0.31, 0.088, -9),
+            (0.51, 0.455, 0.35, 0.092, 1),
+            (0.63, 0.47, 0.31, 0.088, 12),
+            (0.72, 0.62, 0.23, 0.096, 50),   // 拇指：从掌侧偏下伸出、向外张开
+        ]
+        for (x, y, length, width, degrees) in fingers {
+            let len = h * length * (1 + jitter(0.1))
+            let base = w * width * (1 + jitter(0.12))
+            let bend = jitter(0.12) * len          // 手指微微弯
             let angle = (degrees + jitter(5)) * .pi / 180
-            let base = point(x + jitter(0.012), y)
-            let transform = CGAffineTransform(translationX: base.x, y: base.y).rotated(by: angle)
-            // 一半的手指是完整一条，其余断成两三截
-            let pieces = random.unit() < 0.45 ? 1 : 2 + Int(random.unit() * 2)
-            var cursor: CGFloat = 0
-            for piece in 0..<pieces {
-                // 越靠指尖的一截越细、越短；截与截之间留一道缝
-                let share = piece == pieces - 1 ? total - cursor : total / CGFloat(pieces) * (0.8 + random.unit() * 0.4)
-                let segment = max(thick * 0.9, share)
-                let taper = thick * (1 - 0.12 * CGFloat(piece)) * (1 + jitter(0.1))
-                // 不用圆头药丸：沿长度取几个点，左右边缘各自抖动，指尖用一段曲线收口，
-                // 看起来是按出来的不规则痕迹。走向与掌心一致（左边向上、右边向下）
-                let steps = 6
-                let shift = jitter(thick * 0.08)
-                var segmentPath = Path()
-                var right: [CGPoint] = []
+            let transform = CGAffineTransform(translationX: point(x, y).x, y: point(x, y).y).rotated(by: angle)
+            // 约三分之一的手指在中段断开一道缝，像没按实
+            let gapAt: CGFloat? = random.unit() < 0.35 ? 0.45 + random.unit() * 0.2 : nil
+            // 缝要够宽才读得出是“没按实”，太窄会像一道接缝线
+            let gap = h * (0.022 + random.unit() * 0.016)
+            var pieces: [(CGFloat, CGFloat)] = [(0, 1)]
+            if let gapAt { pieces = [(0, gapAt), (gapAt + gap / len, 1)] }
+            for (from, to) in pieces where to > from {
+                // 沿长度取点：宽度从根部收到指尖的六成，左右边缘各自抖动；走向与掌心一致
+                let steps = 7
+                var left: [CGPoint] = [], right: [CGPoint] = []
                 for i in 0...steps {
-                    let y = -cursor - segment * CGFloat(i) / CGFloat(steps)
-                    let half = taper / 2 * (1 + jitter(0.2)) * (1 - 0.12 * CGFloat(i) / CGFloat(steps))
-                    let left = CGPoint(x: shift - half, y: y)
-                    right.append(CGPoint(x: shift + half * (1 + jitter(0.15)), y: y))
-                    if i == 0 { segmentPath.move(to: left) } else { segmentPath.addLine(to: left) }
+                    let t = from + (to - from) * CGFloat(i) / CGFloat(steps)
+                    let half = base / 2 * (1 - 0.4 * t) * (1 + jitter(0.1))
+                    let cx = bend * t * t
+                    left.append(CGPoint(x: cx - half, y: -len * t))
+                    right.append(CGPoint(x: cx + half * (1 + jitter(0.08)), y: -len * t))
                 }
-                let tip = CGPoint(x: shift + jitter(taper * 0.1), y: -cursor - segment - taper * 0.35)
-                segmentPath.addQuadCurve(to: right[steps], control: tip)
-                for point in right.reversed().dropFirst() { segmentPath.addLine(to: point) }
-                segmentPath.closeSubpath()
-                path.addPath(segmentPath, transform: transform)
-                cursor += segment + h * (0.008 + random.unit() * 0.012)
-                if cursor >= total { break }
-            }
-            // 拇指尖往里卷一个小圆点
-            if index == 4 {
-                let tip = CGPoint(x: -thick * 0.6, y: -cursor - thick * 0.2).applying(transform)
-                let r = thick * 0.42
-                path.addEllipse(in: CGRect(x: tip.x - r, y: tip.y - r, width: r * 2, height: r * 2))
+                var finger = Path()
+                finger.move(to: left[0])
+                for p in left.dropFirst() { finger.addLine(to: p) }
+                if to >= 1 {
+                    // 指尖：收成圆钝的尖
+                    let tip = CGPoint(x: bend + jitter(base * 0.05), y: -len - base * 0.32)
+                    finger.addQuadCurve(to: right[steps], control: tip)
+                } else {
+                    finger.addLine(to: right[steps])
+                }
+                for p in right.reversed().dropFirst() { finger.addLine(to: p) }
+                finger.closeSubpath()
+                hand.addPath(finger, transform: transform)
             }
         }
 
-        // 滴痕：从掌缘和指根往下淌，细长、末端鼓成水滴
-        let drips = 8 + Int(random.unit() * 5)
-        for _ in 0..<drips {
-            let x = 0.27 + random.unit() * 0.48
-            let top = 0.52 + random.unit() * 0.10
-            let length = 0.08 + pow(random.unit(), 1.4) * 0.40
-            let thick = w * (0.008 + random.unit() * 0.02)
-            let start = point(x, top)
-            let bottom = min(rect.maxY - thick, start.y + h * length)
-            path.addRoundedRect(in: CGRect(x: start.x - thick / 2, y: start.y, width: thick, height: bottom - start.y),
-                                cornerSize: CGSize(width: thick / 2, height: thick / 2))
-            let drop = thick * 0.6
-            path.addEllipse(in: CGRect(x: start.x - drop, y: bottom - drop * 1.2, width: drop * 2, height: drop * 2.4))
-        }
-
-        // 细碎飞溅：手印周围零星的小点，按下时溅出来的
+        // 细碎飞溅：手印周围零星的小点
         for _ in 0..<(10 + Int(random.unit() * 10)) {
-            let angle = Double(random.unit()) * 2 * .pi
-            let distance = 0.30 + random.unit() * 0.22
-            let center = point(0.5 + CGFloat(cos(angle)) * distance * 0.9, 0.42 + CGFloat(sin(angle)) * distance * 0.7)
-            let r = w * (0.006 + pow(random.unit(), 2) * 0.02)
-            path.addEllipse(in: CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2))
+            let t = Double(random.unit()) * 2 * .pi
+            let distance = 0.30 + random.unit() * 0.2
+            let c = point(0.5 + CGFloat(cos(t)) * distance * 0.85, 0.45 + CGFloat(sin(t)) * distance * 0.6)
+            let r = w * (0.006 + pow(random.unit(), 2) * 0.018)
+            hand.addEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
         }
 
-        // 偶尔甩出一小块分离的残迹
-        if random.unit() < 0.7 {
-            let side: CGFloat = random.unit() < 0.5 ? 0.08 : 0.92
-            let blob = point(side, 0.48 + random.unit() * 0.1)
-            let bw = w * 0.06, bh = h * (0.06 + random.unit() * 0.05)
-            path.addRoundedRect(in: CGRect(x: blob.x - bw / 2, y: blob.y, width: bw, height: bh),
-                                cornerSize: CGSize(width: bw / 2, height: bw / 2))
+        // 右手：整只手左右翻转。翻转会反转走向，但整只手一起翻，各部分之间仍然一致
+        let mirror = CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: rect.minX * 2 + w, ty: 0)
+        var path = mirrored ? hand.applying(mirror) : hand
+        // 滴痕先在“翻转前”的坐标里画（位置和角度都预先翻转），最后和手一起翻转一次：
+        // 这样滴痕的走向和翻转后的手掌一致，重叠处按非零规则合成一体，不会抵消成空洞
+        var drops = Path()
+
+        // 滴痕：在最终坐标里画，方向按 gravity 反算，屏幕上始终朝下。
+        // 粗细差别大，多数细长，少数粗；有的中段鼓起一截，末端挂一颗水滴
+        let fall = CGFloat(mirrored ? gravity.radians : -gravity.radians)
+        let drips = 6 + Int(random.unit() * 6)
+        for _ in 0..<drips {
+            let origin = point(0.32 + random.unit() * 0.38, 0.52 + random.unit() * 0.2)
+            // 手印转了方向时，“向下”可能指向画框侧边：滴痕长度限制在画框以内，免得被截出一道斜切口
+            let down = CGVector(dx: -sin(fall), dy: cos(fall))
+            func room(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat, _ step: CGFloat) -> CGFloat {
+                abs(step) < 0.001 ? .infinity : ((step > 0 ? high : low) - value) / step
+            }
+            let inset = w * 0.04
+            let available = min(room(origin.x, rect.minX + inset, rect.maxX - inset, down.dx),
+                                room(origin.y, rect.minY + inset, rect.maxY - inset, down.dy))
+            let length = min(h * (0.1 + pow(random.unit(), 1.3) * 0.34), max(0, available - w * 0.04))
+            guard length > w * 0.04 else { continue }
+            let thick = w * (0.008 + pow(random.unit(), 2.2) * 0.04)
+            let root = thick * (1.3 + random.unit() * 0.8)
+            let bulge = random.unit() < 0.3 ? thick * 0.6 : 0
+            var drip = Path()
+            // 以 +y 为流向画，右边向下、底边向左、左边向上（与掌心同一走向）
+            drip.move(to: CGPoint(x: root / 2, y: -thick))
+            drip.addQuadCurve(to: CGPoint(x: thick / 2, y: length * 0.3), control: CGPoint(x: thick / 2, y: 0))
+            drip.addQuadCurve(to: CGPoint(x: thick / 2, y: length * 0.75),
+                              control: CGPoint(x: thick / 2 + bulge, y: length * 0.55))
+            drip.addLine(to: CGPoint(x: thick / 2, y: length))
+            drip.addLine(to: CGPoint(x: -thick / 2, y: length))
+            drip.addLine(to: CGPoint(x: -thick / 2, y: length * 0.75))
+            drip.addQuadCurve(to: CGPoint(x: -thick / 2, y: length * 0.3),
+                              control: CGPoint(x: -thick / 2 - bulge, y: length * 0.55))
+            drip.addQuadCurve(to: CGPoint(x: -root / 2, y: -thick), control: CGPoint(x: -thick / 2, y: 0))
+            drip.closeSubpath()
+            let bead = max(thick * 0.75, w * 0.008)
+            drip.addEllipse(in: CGRect(x: -bead, y: length - bead * 0.8, width: bead * 2, height: bead * 2.6))
+            drops.addPath(drip, transform: CGAffineTransform(translationX: origin.x, y: origin.y).rotated(by: fall))
         }
+        path.addPath(mirrored ? drops.applying(mirror) : drops)
         return path
     }
 }
 
-/// 一个 BT 手印：哑光的灰白色，像干在地面上的一层薄薄的物质。
-/// 不用渐变和金属反光（太像矢量插画），而是平涂加颗粒噪点，边缘带一点点虚，周围有细碎飞溅。
+/// 一个 BT 手印：哑光灰白，带深浅斑驳和一圈很淡的内阴影，看起来是按进去的印痕，而不是贴上去的贴纸。
 /// 画一次就缓存成位图：轮盘每帧都会重画，几十条路径加噪点逐帧算太浪费。
 struct BTHandprint: View {
     var seed: UInt64 = 1
+    var mirrored = false
+    /// 这个手印在屏幕上会被旋转的角度（调用方 rotationEffect 用的同一个值），用来让滴痕朝下
+    var gravity: Angle = .zero
 
     var body: some View {
         GeometryReader { geometry in
-            if let image = HandprintCache.image(seed: seed, size: geometry.size) {
+            if let image = HandprintCache.image(seed: seed, mirrored: mirrored, gravity: gravity, size: geometry.size) {
                 Image(decorative: image, scale: HandprintCache.scale).resizable()
             }
         }
@@ -148,11 +164,16 @@ struct BTHandprint: View {
     /// 实际的绘制内容，交给缓存渲染
     struct Artwork: View {
         var seed: UInt64
+        var mirrored: Bool
+        var gravity: Angle
 
         var body: some View {
-            let shape = HandprintShape(seed: seed)
+            let shape = HandprintShape(seed: seed, mirrored: mirrored, gravity: gravity)
             ZStack {
-                shape.fill(Color(red: 0.80, green: 0.81, blue: 0.82))
+                // 压痕：用整体外轮廓做内阴影（逐段描边会把内部接缝也描出来）
+                shape.fill(Color(red: 0.80, green: 0.81, blue: 0.82)
+                    .shadow(.inner(color: .black.opacity(0.4), radius: 1.6))
+                    .shadow(.inner(color: .white.opacity(0.25), radius: 0.6, x: 0.6, y: 0.8)))
                 // 质感：放大的噪点做成大块的深浅斑驳，再叠极淡的细颗粒，像干涸的颜料，而不是砂纸
                 Grain.layer(opacity: 0.35, scale: 0.18, smooth: true).blendMode(.multiply).mask(shape)
                 Grain.layer(opacity: 0.12, offset: 37).blendMode(.multiply).mask(shape)
@@ -171,11 +192,14 @@ enum HandprintCache {
     static let scale: CGFloat = 2
     private static var images: [String: CGImage] = [:]
 
-    static func image(seed: UInt64, size: CGSize) -> CGImage? {
+    /// 方向按 10° 取整：轨迹里的手印朝向各不相同，取整后缓存仍然能复用，滴痕偏差肉眼看不出
+    static func image(seed: UInt64, mirrored: Bool, gravity: Angle, size: CGSize) -> CGImage? {
         guard size.width > 1, size.height > 1 else { return nil }
-        let key = "\(seed)|\(Int(size.width))x\(Int(size.height))"
+        let degrees = Int((gravity.degrees / 10).rounded()) * 10
+        let key = "\(seed)|\(mirrored)|\(degrees)|\(Int(size.width))x\(Int(size.height))"
         if let cached = images[key] { return cached }
-        let renderer = ImageRenderer(content: BTHandprint.Artwork(seed: seed)
+        let renderer = ImageRenderer(content: BTHandprint.Artwork(seed: seed, mirrored: mirrored,
+                                                                  gravity: .degrees(Double(degrees)))
             .frame(width: size.width, height: size.height))
         renderer.scale = scale
         guard let image = renderer.cgImage else { return nil }
@@ -259,7 +283,7 @@ struct HandprintField: View {
         // 0.25 秒浮现，最后 0.8 秒消散
         let fadeIn = min(1, max(0, age / 0.25))
         let fadeOut = min(1, max(0, (life - age) / 0.8))
-        BTHandprint(seed: UInt64(index) &+ 101)
+        BTHandprint(seed: UInt64(index) &+ 101, mirrored: index % 2 == 1, gravity: .degrees(rotation))
             .frame(width: size * scale * 0.62, height: size * scale)
             .rotationEffect(.degrees(rotation))
             .scaleEffect(0.9 + 0.1 * fadeIn)

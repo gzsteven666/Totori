@@ -111,16 +111,18 @@ struct FanView: View {
 
     // MARK: 冥滩：BT 手印
 
-    /// 轮盘出现后，BT 手印一个接一个从外围浮现，每个都比上一个更靠近中心，像看不见的 BT 正在逼近。
-    /// 最多同时留 9 个，更早的慢慢消散。纯按时间推算，不保存状态。
+    /// 轮盘出现后，两串 BT 手印从外围朝中心“爬”过来：每串左右手交替、手指朝前进方向，
+    /// 就像游戏里 BT 靠近时地上一步步出现的手印。爬到内圈后不再前进，更早的手印慢慢消散。
+    /// 纯按时间推算，不保存状态；两串的起点按这次轮盘出现的时刻取，每次不一样。
     private var approachingPrints: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: Palette.reduceMotion || !model.appeared)) { context in
-            let interval = 0.32
+            let interval = 0.3
             let elapsed = model.debugPrintsElapsed
-                ?? (Palette.reduceMotion ? interval * 6 : max(0, context.date.timeIntervalSince(printsStart)))
-            let newest = Int(elapsed / interval)
+                ?? (Palette.reduceMotion ? interval * 8 : max(0, context.date.timeIntervalSince(printsStart)))
+            // 每串最多爬 9 步；两串交替出手，所以总数是 18
+            let newest = min(Int(elapsed / interval), 17)
             ZStack {
-                ForEach(max(0, newest - 9)...newest, id: \.self) { index in
+                ForEach(0...newest, id: \.self) { index in
                     approachingPrint(index, age: elapsed - Double(index) * interval, newest: newest)
                 }
             }
@@ -130,23 +132,31 @@ struct FanView: View {
     }
 
     private func approachingPrint(_ index: Int, age: Double, newest: Int) -> some View {
+        let trail = index % 2, step = index / 2
+        // 两串的来向错开约 140°，起点随本次出现时刻变化
+        // 两串共用一个随机起点、再固定错开 140°，保证从两个方向过来，不会挤在同一侧
+        var session = SplitMix64(seed: UInt64(printsStart.timeIntervalSince1970 * 10))
+        let heading = Double(session.unit()) * 2 * .pi + Double(trail) * 2.45
         var random = SplitMix64(seed: UInt64(index) &* 0x9E37_79B9 &+ 3)
-        let angle = Double(random.unit()) * 2 * .pi
-        let outer = model.canvas / 2 - 24
-        let inner = model.radius * 0.5
-        // 每个新手印向中心推进一步，推到内圈后就在内圈附近徘徊
-        let radius = max(inner, outer - CGFloat(index) * (outer - inner) / 12) + (random.unit() - 0.5) * 16
-        let position = CGPoint(x: model.center.x + CGFloat(cos(angle)) * radius,
-                               y: model.center.y + CGFloat(sin(angle)) * radius)
+        let outer = model.canvas / 2 - 30
+        let inner = model.radius * 0.45
+        let radius = outer - CGFloat(step) * (outer - inner) / 8
+        let size: CGFloat = 50 + random.unit() * 10
+        // 左右手分列在前进路线两侧，再加一点摆动，像四肢交替着地
+        let side: CGFloat = step % 2 == 0 ? -1 : 1
+        let lateral = side * size * 0.34 + (random.unit() - 0.5) * 8
+        let position = CGPoint(
+            x: model.center.x + CGFloat(cos(heading)) * radius - CGFloat(sin(heading)) * lateral,
+            y: model.center.y + CGFloat(sin(heading)) * radius + CGFloat(cos(heading)) * lateral)
+        // 手指指向中心（前进方向）
+        let rotation = Angle.radians(heading + 3 * .pi / 2 + Double(random.unit() - 0.5) * 0.35)
+        let fadeIn = min(1, max(0, age / 0.22))
         let rank = newest - index
-        let fadeIn = min(1, max(0, age / 0.2))
-        let fadeOld = rank > 6 ? max(0, 1 - Double(rank - 6) / 3) : 1
-        let size: CGFloat = 52 + random.unit() * 14
-        return BTHandprint(seed: UInt64(index) &+ 11)
+        let fadeOld = rank > 9 ? max(0, 1 - Double(rank - 9) / 4) : 1
+        return BTHandprint(seed: UInt64(index) &+ 11, mirrored: step % 2 == 1, gravity: rotation)
             .frame(width: size * 0.62, height: size)
-            // 手印基本直立、只轻微歪斜：像按在竖着的玻璃上，滴痕始终往下淌
-            .rotationEffect(.degrees(Double(random.unit() - 0.5) * 30))
-            .scaleEffect(0.88 + 0.12 * fadeIn)
+            .rotationEffect(rotation)
+            .scaleEffect(0.9 + 0.1 * fadeIn)
             .opacity(0.85 * fadeIn * fadeOld)
             .position(position)
     }
@@ -158,7 +168,7 @@ struct FanView: View {
         let base = CGPoint(x: point.x - dir.dx * 34, y: point.y - dir.dy * 34)
         let phase = model.pawPhase
         let press: CGFloat = Palette.reduceMotion ? 0 : (phase == .grasp ? 6 : (phase == .pull ? 4 : -3))
-        return BTHandprint(seed: 7)
+        return BTHandprint(seed: 7, gravity: .radians(angle + .pi / 2))
             .frame(width: 38, height: 60)
             .rotationEffect(.radians(angle + .pi / 2))
             .scaleEffect(phase == .grasp ? 0.86 : (phase == .pull ? 0.92 : 1))
@@ -352,7 +362,7 @@ struct FanView: View {
         // 冥滩：选中的花瓣上留下一个 BT 手印，像被按住
         .overlay(alignment: .trailing) {
             if hot && theme.isBeach {
-                BTHandprint(seed: Self.gelSeed(item.title))
+                BTHandprint(seed: Self.gelSeed(item.title), gravity: .degrees(-14))
                     .frame(width: model.petalHeight * 0.48, height: model.petalHeight * 0.78)
                     .rotationEffect(.degrees(-14))
                     .opacity(0.75)
