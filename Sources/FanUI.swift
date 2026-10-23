@@ -10,7 +10,6 @@ struct FanView: View {
 
     var body: some View {
         ZStack {
-            backdrop
             ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
                 let isHot = model.highlighted == index
                 let hasHot = model.highlighted != nil
@@ -148,50 +147,6 @@ struct FanView: View {
                            : .spring(response: 0.24, dampingFraction: 0.72),
                            value: phase)
         }
-    }
-
-    /// 底盘直径，与 `FanGlassBackdrop.discDiameter` 一致
-    private var discDiameter: CGFloat { model.radius * 2 + 26 }
-
-    /// 凝胶底盘的光影层，叠在系统玻璃上面。
-    /// 系统玻璃负责“透”；这里补上凝胶的“厚”：边缘一圈更浓的主题色、左上弧形高光、
-    /// 底部内侧汇聚的透光。中心保持干净，不再铺一层雾，背后的桌面才看得清。
-    private var backdrop: some View {
-        let d = discDiameter
-        return ZStack {
-            // 边缘加厚：越靠边越浓，中间几乎无色
-            Circle()
-                .fill(RadialGradient(stops: [.init(color: .clear, location: 0),
-                                             .init(color: .clear, location: 0.70),
-                                             .init(color: theme.tint.opacity(0.10), location: 0.90),
-                                             .init(color: theme.tint.opacity(0.22), location: 1)],
-                                     center: .center, startRadius: 0, endRadius: d / 2))
-            // 底部内侧透光：光穿过凝胶在下沿汇聚
-            Circle()
-                .trim(from: 0.12, to: 0.38)
-                .stroke(Color.white.opacity(0.55), style: StrokeStyle(lineWidth: 10, lineCap: .round))
-                .blur(radius: 7)
-                .padding(9)
-            // 左上弧形高光：像窗户在球面上的反光
-            Circle()
-                .trim(from: 0.56, to: 0.80)
-                .stroke(LinearGradient(colors: [Color.white.opacity(0), Color.white.opacity(0.85),
-                                                Color.white.opacity(0)],
-                                       startPoint: .leading, endPoint: .trailing),
-                        style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .blur(radius: 1.2)
-                .padding(7)
-            // 外轮廓：上亮下带主题色
-            Circle()
-                .strokeBorder(LinearGradient(colors: [Color.white.opacity(0.80), Color.white.opacity(0.20),
-                                                      theme.tint.opacity(0.45)],
-                                             startPoint: .top, endPoint: .bottom),
-                              lineWidth: 1.2)
-        }
-        .frame(width: d, height: d)
-        .clipShape(Circle())
-        .position(model.center)
-        .allowsHitTesting(false)
     }
 
     private var readingPill: some View {

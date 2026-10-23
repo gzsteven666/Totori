@@ -24,7 +24,6 @@ final class FanController {
     private var sawButtonDown = false
     private var visibleSince: Date?
     private var wheelCenter: NSPoint?
-    private var backgroundView: FanGlassBackdrop?
     private var hostView: NSView?
     private var localKeyMonitor: Any?
     private var keyboardPointer: NSPoint?
@@ -382,8 +381,6 @@ final class FanController {
     private func position(_ panel: NSPanel, at point: NSPoint) {
         let size = model.canvas
         panel.contentView?.frame = NSRect(x: 0, y: 0, width: size, height: size)
-        backgroundView?.discDiameter = model.radius * 2 + 26
-        backgroundView?.needsLayout = true
         var origin = NSPoint(x: point.x - size / 2, y: point.y - size / 2)
         if let screen = NSScreen.screens.first(where: { $0.frame.contains(point) }) ?? NSScreen.main {
             let visible = screen.visibleFrame
@@ -419,8 +416,8 @@ final class FanController {
         panel.hidesOnDeactivate = false
         panel.animationBehavior = .none
 
-        let container = FanGlassBackdrop(frame: NSRect(x: 0, y: 0, width: model.canvas, height: model.canvas))
-        container.discDiameter = model.radius * 2 + 26
+        // 没有底盘：容器完全透明，只显示花瓣、中心说明和小手
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: model.canvas, height: model.canvas))
 
         let host = DropHostingView(rootView: FanView(model: model))
         host.frame = container.bounds
@@ -459,7 +456,6 @@ final class FanController {
         }
         container.addSubview(host)
         panel.contentView = container
-        self.backgroundView = container
         self.hostView = host
         return panel
     }
