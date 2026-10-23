@@ -76,7 +76,12 @@ enum DocumentPrefetch {
             let fitsWidth = layout == .fitWidth && outputExt == "pdf" && SpreadsheetPDFLayout.supports(url)
             // 靠文件头识别、没有正确扩展名的文件交给单文件流程（那里会补上扩展名）
             let knownExtension = lower == FormatCatalog.effectiveExtension(of: url)
+            // PDF 转文字/图片走系统 PDF 渲染，不经 LibreOffice
+            // 逐页图片要先转 PDF 再渲染，单张图片的 LibreOffice 导出只有第一页，也不走批量
+            let pdfRenderer = Engine.usesPDFRenderer(source: url, ext: outputExt)
+                || FormatCatalog.pageImageExts.contains(outputExt)
             return FormatCatalog.kind(of: url) == .document && lower != "svg" && !fitsWidth && knownExtension
+                && !pdfRenderer
                 && seen[url.deletingPathExtension().lastPathComponent.lowercased()] == 1
         }
         guard eligible.count >= 2 else { return }

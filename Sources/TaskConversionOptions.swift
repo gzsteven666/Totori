@@ -24,7 +24,7 @@ extension OutputFormat {
     var supportsTaskQuality: Bool {
         switch kind {
         case .image: return ["jpg", "jpeg", "heic", "webp", "avif", "jp2"].contains(ext.lowercased())
-        case .media: return ["mp4", "mov", "mkv"].contains(ext.lowercased())
+        case .media: return ["mp4", "hevc", "mov", "mkv"].contains(ext.lowercased())
         default: return false
         }
     }

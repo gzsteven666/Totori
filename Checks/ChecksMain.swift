@@ -4,6 +4,27 @@ import AppKit
 /// 只在带 `TOTORI_CHECKS` 的构建里编译；正式包里没有这些代码。
 /// 构建方式见 README：`TOTORI_CHECKS=1 ./build.sh`。
 func runChecksIfRequested() {
+    // `--convert <文件> <输出扩展名> <输出目录>`：开发时用真实文件试一次转换，走和主窗口相同的路径
+    if let index = CommandLine.arguments.firstIndex(of: "--convert"), CommandLine.arguments.count > index + 3 {
+        let source = URL(fileURLWithPath: CommandLine.arguments[index + 1])
+        let ext = CommandLine.arguments[index + 2]
+        let directory = URL(fileURLWithPath: CommandLine.arguments[index + 3])
+        let kind = FormatCatalog.kind(of: source)
+        guard let format = FormatCatalog.outputs(for: source).first(where: { $0.ext == ext }) else {
+            print("不支持：\(source.lastPathComponent)（\(kind.title)）→ \(ext)；可选 \(FormatCatalog.outputs(for: source).map(\.ext))")
+            exit(1)
+        }
+        let start = Date()
+        do {
+            let output = try Engine.convert(source: source, format: format, to: directory) { _ in }
+            print("完成：\(output.path)（\(String(format: "%.1f", Date().timeIntervalSince(start))) 秒）")
+            exit(0)
+        } catch {
+            print("失败：\((error as? LocalizedError)?.errorDescription ?? "\(error)")")
+            exit(1)
+        }
+    }
+
     if CommandLine.arguments.contains("--bench-fan") {
         exit(MainActor.assumeIsolated { FanFrameBench.run() })
     }

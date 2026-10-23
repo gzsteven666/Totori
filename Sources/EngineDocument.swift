@@ -19,6 +19,12 @@ extension Engine {
         case "odt":  return "odt"
         case "epub": return "epub"
         case "md", "markdown": return "md:Markdown"
+        case "xlsx": return "xlsx:Calc MS Excel 2007 XML"
+        // 逗号分隔、双引号包裹、UTF-8（76），中文在 Excel 和 Numbers 里都能正常打开
+        case "csv":  return "csv:Text - txt - csv (StarCalc):44,34,76"
+        case "ods":  return "ods"
+        case "pptx": return "pptx:Impress MS PowerPoint 2007 XML"
+        case "odp":  return "odp"
         default:     return ext
         }
     }

@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import CoreText
 import ImageIO
 import UniformTypeIdentifiers
 import PDFKit
@@ -92,6 +93,64 @@ enum SelfTest {
             setupFailures.append("生成 sample.zip（ditto）")
         }
 
+        // 新增输入格式：用系统 ImageIO 从 sample.png 写出 PSD / EXR / TGA / JP2
+        for (key, type) in [("psd", "com.adobe.photoshop-image"), ("exr", "com.ilm.openexr-image"),
+                            ("tga", "com.truevision.tga-image"), ("jp2", "public.jpeg-2000")] {
+            let target = root.appendingPathComponent("sample.\(key)")
+            if let png = fixtures["png"], reencode(png, to: target, type: type) {
+                fixtures[key] = target
+            } else {
+                setupFailures.append("生成 sample.\(key)（ImageIO）")
+            }
+        }
+
+        let csv = root.appendingPathComponent("表格.csv")
+        try? "名称,数量,备注\n苹果,3,\"红, 甜\"\n梨,5,脆\n".write(to: csv, atomically: true, encoding: .utf8)
+        fixtures["csv"] = csv
+        // 足够长的纯文本，排版后超过一页，用来测多页文档转逐页图片
+        let longText = root.appendingPathComponent("长文.txt")
+        try? (1...160).map { "第 \($0) 行：Totori 逐页图片自检。" }.joined(separator: "\n")
+            .write(to: longText, atomically: true, encoding: .utf8)
+        fixtures["longtxt"] = longText
+
+        if let ffmpeg = Shell.which("ffmpeg"), let mp4 = fixtures["mp4"] {
+            let ts = root.appendingPathComponent("sample.ts")
+            if let r = try? Shell.run(ffmpeg, ["-hide_banner", "-y", "-i", mp4.path, "-c", "copy", "-f", "mpegts", ts.path]),
+               r.status == 0, fm.fileExists(atPath: ts.path) {
+                fixtures["ts"] = ts
+            } else { setupFailures.append("生成 sample.ts（ffmpeg）") }
+            let caf = root.appendingPathComponent("sample.caf")
+            if let r = try? Shell.run(ffmpeg, ["-hide_banner", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+                                               "-c:a", "pcm_s16le", caf.path]),
+               r.status == 0, fm.fileExists(atPath: caf.path) {
+                fixtures["caf"] = caf
+            } else { setupFailures.append("生成 sample.caf（ffmpeg）") }
+        }
+
+        // 第二、三组：动图 GIF（ffmpeg 生成，奇数宽高测偶数修正）、7z 与单个 .gz 压缩文件
+        if let ffmpeg = Shell.which("ffmpeg") {
+            let gif = root.appendingPathComponent("anim.gif")
+            if let r = try? Shell.run(ffmpeg, ["-hide_banner", "-y", "-f", "lavfi", "-i", "testsrc=size=161x99:rate=10",
+                                               "-t", "1", gif.path]),
+               r.status == 0, fm.fileExists(atPath: gif.path) {
+                fixtures["gif"] = gif
+            } else { setupFailures.append("生成 anim.gif（ffmpeg）") }
+        }
+        if let bsdtar = Shell.which("bsdtar"), let gzip = Shell.which("gzip") {
+            let tree = root.appendingPathComponent("tree")
+            try? fm.createDirectory(at: tree.appendingPathComponent("sub"), withIntermediateDirectories: true)
+            try? "hello".write(to: tree.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+            try? "中文".write(to: tree.appendingPathComponent("sub/b.txt"), atomically: true, encoding: .utf8)
+            let sevenZip = root.appendingPathComponent("pack.7z")
+            let gz = root.appendingPathComponent("notes.txt.gz")
+            if let r = try? Shell.run(bsdtar, ["--format", "7zip", "-cf", sevenZip.path, "-C", tree.path, "."]), r.status == 0 {
+                fixtures["7z"] = sevenZip
+            } else { setupFailures.append("生成 pack.7z（bsdtar）") }
+            if let r = try? Shell.run(gzip, ["-c", tree.appendingPathComponent("a.txt").path], stdoutTo: gz), r.status == 0 {
+                fixtures["gz"] = gz
+            } else { setupFailures.append("生成 notes.txt.gz（gzip）") }
+        }
+
         if !setupFailures.isEmpty {
             print("✕ 样本准备失败：")
             setupFailures.forEach { print("   - \($0)") }
@@ -117,6 +176,15 @@ enum SelfTest {
             .init(label: "MP4 → WMV",    source: "mp4",  formatKey: "wmv",  expectedExt: "wmv"),
             .init(label: "MP4 → FLAC",   source: "mp4",  formatKey: "flac", expectedExt: "flac"),
             .init(label: "MP4 → AIFF",   source: "mp4",  formatKey: "aiff", expectedExt: "aiff"),
+            .init(label: "PSD → PNG",    source: "psd",  formatKey: "png",  expectedExt: "png"),
+            .init(label: "EXR → PNG",    source: "exr",  formatKey: "png",  expectedExt: "png"),
+            .init(label: "TGA → JPG",    source: "tga",  formatKey: "jpg",  expectedExt: "jpg"),
+            .init(label: "JP2 → PNG",    source: "jp2",  formatKey: "png",  expectedExt: "png"),
+            .init(label: "CSV → Excel",  source: "csv",  formatKey: "xlsx", expectedExt: "xlsx"),
+            .init(label: "CSV → ODS",    source: "csv",  formatKey: "ods",  expectedExt: "ods"),
+            .init(label: "DOCX → PNG",   source: "docx", formatKey: "png",  expectedExt: "png"),
+            .init(label: "TS → MP4",     source: "ts",   formatKey: "mp4",  expectedExt: "mp4"),
+            .init(label: "CAF → MP3",    source: "caf",  formatKey: "mp3",  expectedExt: "mp3"),
         ]
 
         // 系统 ImageIO 不能编码 AVIF 时（如部分虚拟机），不应作为失败；也不会向用户提供该选项
@@ -705,6 +773,167 @@ enum SelfTest {
             print("\(pad("子进程输出完整性")) ✕        \(error)")
         }
 
+        // PDF 转图片与文字：多页出文件夹（每页一张、按页面尺寸 2 倍渲染），单页出一个文件，文字可提取
+        do {
+            let pdfDir = root.appendingPathComponent("pdf-pages")
+            try? fm.createDirectory(at: pdfDir, withIntermediateDirectories: true)
+            let multi = pdfDir.appendingPathComponent("三页.pdf")
+            let single = pdfDir.appendingPathComponent("单页 v1.2.pdf")
+            guard makeTextPDF(at: multi, pages: ["第一页 Alpha", "第二页 Beta", "第三页 Gamma"]),
+                  makeTextPDF(at: single, pages: ["Only page"]),
+                  let png = FormatCatalog.documents.first(where: { $0.ext == "png" }),
+                  let jpg = FormatCatalog.documents.first(where: { $0.ext == "jpg" }),
+                  let txt = FormatCatalog.documents.first(where: { $0.ext == "txt" }) else {
+                throw ConversionError.failed("生成 PDF 样本失败")
+            }
+            let folder = try Engine.convert(source: multi, format: png, to: pdfDir) { _ in }
+            let pages = (try? fm.contentsOfDirectory(atPath: folder.path).sorted()) ?? []
+            let firstSize = pages.first.flatMap { imagePixelSize(folder.appendingPathComponent($0)) }
+            let folderOK = folder.lastPathComponent == "三页 - PNG 页面"
+                && pages == ["三页-1.png", "三页-2.png", "三页-3.png"]
+                && firstSize == CGSize(width: 1190, height: 1684)
+            // 同名再转一次：文件夹名按“名字 2”避让，不把名字里的点当扩展名
+            let again = try Engine.convert(source: multi, format: png, to: pdfDir) { _ in }
+            let againOK = again.lastPathComponent == "三页 - PNG 页面 2"
+            let one = try Engine.convert(source: single, format: jpg, to: pdfDir) { _ in }
+            let oneOK = one.lastPathComponent == "单页 v1.2.jpg" && imagePixelSize(one) != nil
+            let text = try Engine.convert(source: multi, format: txt, to: pdfDir) { _ in }
+            let content = (try? String(contentsOf: text, encoding: .utf8)) ?? ""
+            let textOK = content.contains("第二页 Beta") && content.contains("Gamma")
+            let ok = folderOK && againOK && oneOK && textOK
+            if ok { pass += 1 } else {
+                fail += 1
+                failures.append("PDF 转图片/文字：文件夹=\(folderOK) \(pages) \(String(describing: firstSize)) 避让=\(againOK) 单页=\(oneOK) 文字=\(textOK)")
+            }
+            print("\(pad("PDF 逐页图片与文字")) \(ok ? "✓" : "✕")        3 页出文件夹、单页出文件、同名避让、文字提取")
+        } catch {
+            fail += 1; failures.append("PDF 转图片/文字用例异常：\(error)")
+            print("\(pad("PDF 逐页图片与文字")) ✕        \(error)")
+        }
+
+        // 表格互转与多页文档逐页出图：CSV → Excel → CSV 内容不变（含中文和带逗号的引号字段）；
+        // Excel → ODS → 演示文稿不可选；长文本排版成多页后转 PNG 得到文件夹
+        if let csv = fixtures["csv"], let longText = fixtures["longtxt"],
+           let xlsx = FormatCatalog.documents.first(where: { $0.ext == "xlsx" }),
+           let csvFormat = FormatCatalog.documents.first(where: { $0.ext == "csv" }),
+           let ods = FormatCatalog.documents.first(where: { $0.ext == "ods" }),
+           let png = FormatCatalog.documents.first(where: { $0.ext == "png" }) {
+            do {
+                let sheetDir = root.appendingPathComponent("sheets")
+                try? fm.createDirectory(at: sheetDir, withIntermediateDirectories: true)
+                let book = try Engine.convert(source: csv, format: xlsx, to: sheetDir) { _ in }
+                let back = try Engine.convert(source: book, format: csvFormat, to: sheetDir) { _ in }
+                let original = try String(contentsOf: csv, encoding: .utf8)
+                let roundTrip = (try? String(contentsOf: back, encoding: .utf8)) ?? ""
+                let normalize: (String) -> String = { $0.replacingOccurrences(of: "\r\n", with: "\n")
+                    .trimmingCharacters(in: .whitespacesAndNewlines) }
+                let csvOK = normalize(original) == normalize(roundTrip)
+                let odsOut = try Engine.convert(source: book, format: ods, to: sheetDir) { _ in }
+                let odsOK = odsOut.pathExtension == "ods" && Engine.fileSize(odsOut) > 0
+                let folder = try Engine.convert(source: longText, format: png, to: sheetDir) { _ in }
+                let pageCount = (try? fm.contentsOfDirectory(atPath: folder.path).filter { $0.hasSuffix(".png") }.count) ?? 0
+                let pagesOK = folder.lastPathComponent == "长文 - PNG 页面" && pageCount >= 2
+                let ok = csvOK && odsOK && pagesOK
+                if ok { pass += 1 } else {
+                    fail += 1
+                    failures.append("表格互转/逐页图片：CSV 往返=\(csvOK) \(roundTrip.debugDescription) ODS=\(odsOK) 多页=\(pagesOK)（\(pageCount) 页）")
+                }
+                print("\(pad("表格互转与文档逐页出图")) \(ok ? "✓" : "✕")        CSV↔Excel 往返、Excel→ODS、长文本 \(pageCount) 页出文件夹")
+            } catch {
+                fail += 1; failures.append("表格互转/逐页图片用例异常：\(error)")
+                print("\(pad("表格互转与文档逐页出图")) ✕        \(error)")
+            }
+        }
+
+        // 新输入格式的识别：RAW/PSD 当图片、摄像机容器当视频、CAF 当纯音频；TypeScript 源码 .ts 不当视频
+        do {
+            let code = root.appendingPathComponent("index.ts")
+            try? "export const answer = 42\n".write(to: code, atomically: true, encoding: .utf8)
+            func kind(_ name: String) -> FileKind { FormatCatalog.kind(of: URL(fileURLWithPath: "/x/" + name)) }
+            let checks: [(String, Bool)] = [
+                ("DNG/CR3/NEF 是图片", kind("a.dng") == .image && kind("a.cr3") == .image && kind("a.nef") == .image),
+                ("PSD/EXR/TGA/JP2 是图片", ["a.psd", "a.exr", "a.tga", "a.jp2"].allSatisfy { kind($0) == .image }),
+                ("MTS/3GP/VOB 是视频", ["a.mts", "a.3gp", "a.vob"].allSatisfy { kind($0) == .media }),
+                ("CAF 只给音频输出", !Set(FormatCatalog.outputs(for: URL(fileURLWithPath: "/x/a.caf")).map(\.ext)).contains("mp4")),
+                ("TS 视频识别", fixtures["ts"].map { FormatCatalog.kind(of: $0) == .media } ?? true),
+                ("TS 源码不当视频", FormatCatalog.kind(of: code) == .unknown),
+            ]
+            let bad = checks.filter { !$0.1 }.map(\.0)
+            if bad.isEmpty { pass += 1 } else { fail += 1; failures.append("输入格式识别：\(bad.joined(separator: "、"))") }
+            print("\(pad("新增输入格式识别")) \(bad.isEmpty ? "✓" : "✕")        \(checks.count) 条规则\(bad.isEmpty ? "" : "，失败：" + bad.joined(separator: "、"))")
+        }
+
+        // 第二、三组：动图转视频、HEVC/ProRes、视频封面、图标、SVG 直接渲染、压缩包解压与重新打包
+        do {
+            let dir = root.appendingPathComponent("group23")
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            func format(_ kind: FileKind, _ ext: String) -> OutputFormat? {
+                FormatCatalog.formats(for: kind).first { $0.ext == ext }
+            }
+            func videoCodec(_ url: URL) -> String {
+                guard let ffprobe = Shell.which("ffprobe"),
+                      let r = try? Shell.run(ffprobe, ["-v", "error", "-select_streams", "v:0", "-show_entries",
+                                                       "stream=codec_name,width,height", "-of", "csv=p=0", url.path],
+                                             captureOutput: true) else { return "" }
+                return r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            var results: [(String, Bool)] = []
+            if let gif = fixtures["gif"], let mp4 = format(.image, "mp4") {
+                let out = try Engine.convert(source: gif, format: mp4, to: dir) { _ in }
+                results.append(("GIF→MP4 偶数宽高", videoCodec(out) == "h264,160,98"))
+            }
+            if let clip = fixtures["mp4"], let hevc = format(.media, "hevc"), let prores = format(.media, "prores"),
+               let cover = format(.media, "png") {
+                let h = try Engine.convert(source: clip, format: hevc, to: dir) { _ in }
+                results.append(("HEVC 写成 .mp4", h.pathExtension == "mp4" && videoCodec(h).hasPrefix("hevc,")))
+                let p = try Engine.convert(source: clip, format: prores, to: dir) { _ in }
+                results.append(("ProRes 写成 .mov", p.pathExtension == "mov" && videoCodec(p).hasPrefix("prores,")))
+                let c = try Engine.convert(source: clip, format: cover, to: dir) { _ in }
+                results.append(("视频封面 PNG", imagePixelSize(c) == CGSize(width: 320, height: 240)))
+            }
+            if let png = fixtures["png"], let ico = format(.image, "ico"), let icns = format(.image, "icns") {
+                let i = try Engine.convert(source: png, format: ico, to: dir) { _ in }
+                let n = try Engine.convert(source: png, format: icns, to: dir) { _ in }
+                let icoCount = CGImageSourceCreateWithURL(i as CFURL, nil).map(CGImageSourceGetCount) ?? 0
+                let icnsCount = CGImageSourceCreateWithURL(n as CFURL, nil).map(CGImageSourceGetCount) ?? 0
+                results.append(("ICO 含 6 个尺寸", icoCount == Engine.icoSizes.count))
+                results.append(("ICNS 含多个尺寸", icnsCount >= 5))
+            }
+            if let svg = fixtures["svg"], let png = format(.document, "png") {
+                let out = try Engine.convert(source: svg, format: png, to: dir) { _ in }
+                results.append(("SVG→PNG 2 倍且透明", imagePixelSize(out) == CGSize(width: 320, height: 200)))
+            }
+            if let sevenZip = fixtures["7z"], let gz = fixtures["gz"],
+               let extract = format(.archive, "extract"), let repack = format(.archive, "repack") {
+                let folder = try Engine.convert(source: sevenZip, format: extract, to: dir) { _ in }
+                let nested = (try? String(contentsOf: folder.appendingPathComponent("sub/b.txt"), encoding: .utf8)) ?? ""
+                results.append(("7z 解压出同名文件夹", folder.lastPathComponent == "pack" && nested == "中文"))
+                let zip = try Engine.convert(source: sevenZip, format: repack, to: dir) { _ in }
+                let listing = (try? Shell.run("/usr/bin/bsdtar", ["-tf", zip.path], captureOutput: true).stdout) ?? ""
+                results.append(("7z 重新打包成 ZIP", zip.lastPathComponent == "pack.zip" && listing.contains("pack/sub/b.txt")))
+                let single = try Engine.convert(source: gz, format: extract, to: dir) { _ in }
+                let text = (try? String(contentsOf: single, encoding: .utf8)) ?? ""
+                results.append(("单个 .gz 还原成文件", single.lastPathComponent == "notes.txt" && text == "hello"))
+            }
+            func exts(_ name: String, _ url: URL? = nil) -> Set<String> {
+                Set(FormatCatalog.outputs(for: url ?? URL(fileURLWithPath: "/x/" + name)).map(\.ext))
+            }
+            results.append(("静态 GIF 不给视频", !exts("", fixtures["png"].map { _ in
+                let still = dir.appendingPathComponent("still.gif")
+                if let png = fixtures["png"] { _ = reencode(png, to: still, type: "com.compuserve.gif") }
+                return still
+            }).contains("mp4")))
+            results.append(("音频不给 HEVC/封面", exts("a.mp3").isDisjoint(with: ["hevc", "prores", "png", "jpg"])))
+            results.append(("ZIP 不重新打包成 ZIP", !exts("a.zip").contains("repack") && exts("a.zip").contains("tgz")))
+            results.append(("tar.gz 不再转 tar.gz", !exts("a.tar.gz").contains("tgz") && exts("a.tar.gz").contains("repack")))
+            let bad = results.filter { !$0.1 }.map(\.0)
+            if bad.isEmpty { pass += 1 } else { fail += 1; failures.append("新增转换：\(bad.joined(separator: "、"))") }
+            print("\(pad("动图/HEVC/图标/解压等")) \(bad.isEmpty ? "✓" : "✕")        \(results.count) 项\(bad.isEmpty ? "" : "，失败：" + bad.joined(separator: "、"))")
+        } catch {
+            fail += 1; failures.append("新增转换用例异常：\(error)")
+            print("\(pad("动图/HEVC/图标/解压等")) ✕        \(error)")
+        }
+
         // 输出格式按输入过滤：必然失败的组合不再提供，常规组合保持可选
         do {
             func exts(_ names: [String]) -> Set<String> {
@@ -712,17 +941,19 @@ enum SelfTest {
                                           sources: names.map { URL(fileURLWithPath: "/x/" + $0) }).map(\.ext))
             }
             let checks: [(String, Bool)] = [
-                ("pptx 只能 PDF/HTML", exts(["a.pptx"]) == ["pdf", "html"]),
-                ("xlsx 只能 PDF/HTML", exts(["a.xlsx"]) == ["pdf", "html"]),
-                ("pdf 只能 HTML", exts(["a.pdf"]) == ["html"]),
-                ("docx 保留全部文档格式", exts(["a.docx"]) == Set(FormatCatalog.documents.map(\.ext))),
-                ("csv 不含 epub/md", !exts(["a.csv"]).contains("epub") && exts(["a.csv"]).contains("docx")),
+                ("pptx 转 PDF/HTML/ODP/逐页图片", exts(["a.pptx"]) == ["pdf", "html", "odp", "png", "jpg"]),
+                ("xlsx 转 PDF/HTML/ODS/CSV/逐页图片", exts(["a.xlsx"]) == ["pdf", "html", "ods", "csv", "png", "jpg"]),
+                ("pdf 可转 HTML/文本/PNG/JPEG", exts(["a.pdf"]) == ["html", "txt", "png", "jpg"]),
+                ("docx 保留文字类格式与逐页图片", exts(["a.docx"]) == Set(FormatCatalog.documents.map(\.ext))
+                    .subtracting(FormatCatalog.spreadsheetOutputExts).subtracting(FormatCatalog.presentationOutputExts)),
+                ("csv 不含 epub/md，可存成 Excel", !exts(["a.csv"]).contains("epub") && exts(["a.csv"]).contains("docx")
+                    && exts(["a.csv"]).contains("xlsx") && !exts(["a.csv"]).contains("csv") && !exts(["a.csv"]).contains("pptx")),
                 ("mp3 不含视频/GIF", exts(["a.mp3"]).isDisjoint(with: ["mp4", "mov", "mkv", "webm", "avi", "wmv", "gif"])
                     && exts(["a.mp3"]).contains("flac")),
                 ("mp4 保留全部音视频格式", exts(["a.mp4"]) == Set(FormatCatalog.medias.map(\.ext))),
                 ("jpg 保留 JPEG 重新编码", exts(["a.jpg"]).contains("jpg")),
                 ("不可写的格式不提供", exts(["a.jpg"]).contains("avif") == FormatCatalog.canWriteImage("avif")),
-                ("多文件取交集", exts(["a.docx", "b.pdf"]) == ["html"]),
+                ("多文件取交集", exts(["a.docx", "b.pdf"]) == ["html", "txt", "png", "jpg"]),
             ]
             let bad = checks.filter { !$0.1 }.map(\.0)
             if bad.isEmpty { pass += 1 } else { fail += 1; failures.append("输出格式过滤：\(bad.joined(separator: "、"))") }
@@ -739,6 +970,40 @@ enum SelfTest {
         print("")
         print(fail == 0 ? "结果：全部通过 ✅" : "结果：有失败项 ❌")
         return fail == 0 ? 0 : 1
+    }
+
+    /// 用 ImageIO 把一张图重新编码成指定类型（造 PSD/EXR/TGA/JP2 样本）
+    static func reencode(_ source: URL, to target: URL, type: String) -> Bool {
+        guard let input = CGImageSourceCreateWithURL(source as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(input, 0, nil),
+              let output = CGImageDestinationCreateWithURL(target as CFURL, type as CFString, 1, nil) else { return false }
+        CGImageDestinationAddImage(output, image, nil)
+        return CGImageDestinationFinalize(output)
+    }
+
+    /// 生成每页带一行文字的 A4 PDF，文字要能被 PDFKit 提取（用 Core Text 画真正的字形，不是图片）
+    static func makeTextPDF(at url: URL, pages: [String]) -> Bool {
+        var box = CGRect(x: 0, y: 0, width: 595, height: 842)
+        guard let context = CGContext(url as CFURL, mediaBox: &box, nil) else { return false }
+        for line in pages {
+            context.beginPDFPage(nil)
+            let attributed = NSAttributedString(string: line, attributes: [
+                NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName("PingFang SC" as CFString, 24, nil),
+            ])
+            context.textPosition = CGPoint(x: 72, y: 700)
+            CTLineDraw(CTLineCreateWithAttributedString(attributed), context)
+            context.endPDFPage()
+        }
+        context.closePDF()
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    static func imagePixelSize(_ url: URL) -> CGSize? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = props[kCGImagePropertyPixelWidth] as? Int,
+              let height = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
+        return CGSize(width: width, height: height)
     }
 
     private static func pad(_ text: String) -> String {

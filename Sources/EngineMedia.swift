@@ -25,18 +25,39 @@ extension Engine {
         progress(0.02)
 
         var args = ["-hide_banner", "-nostdin", "-y", "-i", source.path]
+        // HEVC / ProRes 只是编码不同，容器仍是 mp4 / mov（字幕规则按容器走）
+        let container = FormatCatalog.actualExtension(for: format, source: source)
         // 显式映射：容器支持多音轨时保留全部音轨（默认只会带一条）。
         // V 排除封面图；末尾 ? 让源文件缺少对应流时不报错。
         switch format.ext {
-        case "mp4", "mov", "mkv", "webm":
+        case "mp4", "hevc", "mov", "prores", "mkv", "webm":
             args += ["-map", "0:V:0?", "-map", "0:a?"]
+        case "png", "jpg":
+            args += ["-map", "0:V:0"]
         case "avi", "wmv":
             args += ["-map", "0:V:0?", "-map", "0:a:0?"]
         default:
             break   // gif 与纯音频输出沿用 ffmpeg 的默认选流
         }
 
+        // GIF 动图转视频：H.264/HEVC/VP9 要求宽高为偶数、4:2:0 采样；透明处会变成黑底
+        if source.pathExtension.lowercased() == "gif", ["mp4", "hevc", "mov", "prores", "mkv", "webm"].contains(format.ext) {
+            args += ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p"]
+        }
+
         switch format.ext {
+        case "hevc":
+            // hvc1 标签让 QuickTime / 照片 / iOS 能直接播放；码率按 H.264 的六成估算
+            args += ["-c:v", "hevc_videotoolbox", "-tag:v", "hvc1",
+                     "-b:v", videoBitrate(options, probe: info, bitsPerPixel: 0.06, fallback: "4M"),
+                     "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"]
+        case "prores":
+            // ProRes 422（profile 2），音频用无损 PCM，方便剪辑软件直接用
+            args += ["-c:v", "prores_videotoolbox", "-profile:v", "2", "-c:a", "pcm_s16le"]
+        case "png", "jpg":
+            // thumbnail 从开头 60 帧里挑最有代表性的一帧，避开黑屏片头。
+            // 随包的精简版 ffmpeg 没有 PNG 编码器，所以先存一张 RGB 无损 TIFF（ImageIO 读不了 ffmpeg 默认的 YCbCr TIFF），再转成目标格式。
+            args += ["-vf", "thumbnail=n=60", "-frames:v", "1", "-update", "1", "-c:v", "tiff", "-pix_fmt", "rgb24"]
         case "mp4":
             args += ["-c:v", "h264_videotoolbox", "-b:v", videoBitrate(options, probe: info, bitsPerPixel: 0.1, fallback: "6M"), "-c:a", "aac", "-b:a", "160k",
                      "-movflags", "+faststart"]
@@ -74,8 +95,12 @@ extension Engine {
             throw ConversionError.unsupported("暂不支持输出为 \(format.name)")
         }
 
-        let subtitles = subtitleArguments(container: format.ext, codecs: try probeSubtitleCodecs(source))
-        let tail = ["-progress", "pipe:1", "-nostats", destination.path]
+        let subtitles = subtitleArguments(container: container, codecs: try probeSubtitleCodecs(source))
+        let isCover = ["png", "jpg"].contains(format.ext)
+        let frame = destination.deletingLastPathComponent().appendingPathComponent("frame-\(UUID().uuidString).tiff")
+        let output = isCover ? frame : destination
+        defer { if isCover { try? FileManager.default.removeItem(at: frame) } }
+        let tail = ["-progress", "pipe:1", "-nostats", output.path]
 
         // 只要输出时间还在推进就一直等；ffmpeg 即使卡住也会周期性打印进度行，
         // 所以仅把 out_time_us 变化算作"有进展"，长视频不再被固定上限误杀。
@@ -98,6 +123,12 @@ extension Engine {
         }
 
         var result = try run(args + subtitles + tail)
+        if format.ext == "prores", !result.timedOut, result.status != 0 {
+            // 没有 ProRes 硬件编码器的机器退回软件编码，参数含义相同
+            try? FileManager.default.removeItem(at: destination)
+            let software = args.map { $0 == "prores_videotoolbox" ? "prores_ks" : $0 }
+            result = try run(software + subtitles + tail)
+        }
         if !subtitles.isEmpty, !result.timedOut, result.status != 0 {
             // 字幕转换失败不应拖垮整个转码：去掉字幕轨重试一次，和以前的行为一致。
             try? FileManager.default.removeItem(at: destination)
@@ -108,14 +139,28 @@ extension Engine {
             try? FileManager.default.removeItem(at: destination)
             throw ConversionError.failed("转码已 \(Int(mediaStallTimeout)) 秒没有进展，疑似卡住，已中止")
         }
-        guard result.status == 0, FileManager.default.fileExists(atPath: destination.path) else {
+        guard result.status == 0, FileManager.default.fileExists(atPath: output.path) else {
             let tail = result.stderr.suffix(400)
             if tail.contains("does not contain any stream") || tail.contains("matches no streams") {
                 throw ConversionError.failed("源文件没有音轨，无法提取音频")
             }
             throw ConversionError.failed("转码失败：\(tail)")
         }
+        if isCover { try writeCoverFrame(frame, ext: format.ext, to: destination) }
         progress(1.0)
+    }
+
+    /// 把 ffmpeg 截出的 TIFF 帧存成 PNG / JPEG（质量 0.92）
+    private static func writeCoverFrame(_ frame: URL, ext: String, to destination: URL) throws {
+        let type = (ext == "jpg" ? UTType.jpeg : UTType.png).identifier as CFString
+        guard let input = CGImageSourceCreateWithURL(frame as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(input, 0, nil),
+              let output = CGImageDestinationCreateWithURL(destination as CFURL, type, 1, nil) else {
+            throw ConversionError.failed("截取封面失败")
+        }
+        let properties: [CFString: Any] = ext == "jpg" ? [kCGImageDestinationLossyCompressionQuality: 0.92] : [:]
+        CGImageDestinationAddImage(output, image, properties as CFDictionary)
+        guard CGImageDestinationFinalize(output) else { throw ConversionError.failed("截取封面失败") }
     }
 
     /// ffprobe 读到的源文件信息；读不到的字段保持 nil / 0，调用方各自回退。

@@ -35,7 +35,7 @@ enum FavoriteFormatsProbe {
         let normalized = FavoriteFormats.normalized([".JPG", "jpg", "not-valid", "png"], kind: .image)
         expect(normalized == ["jpg", "png", "heic", "webp"], "无效和重复项过滤后补足四个")
         expect(FavoriteFormats.normalized(FormatCatalog.images.map(\.ext), kind: .image).count == 6, "常用最多六项")
-        expect(FavoriteFormats.formats(for: .archive).map(\.ext) == ["zip"] && FavoriteFormats.formats(for: .unknown).isEmpty,
+        expect(FavoriteFormats.formats(for: .archive).map(\.ext) == FormatCatalog.archives.map(\.ext) && FavoriteFormats.formats(for: .unknown).isEmpty,
                "格式不足四个时保留全部，未知类型保持空")
         FavoriteFormats.set(["jpg", "png", "heic", "webp"], for: .image)
         expect(defaults.stringArray(forKey: FavoriteFormats.storageKey(.image)) == ["jpg", "png", "heic", "webp"],

@@ -19,11 +19,14 @@ enum ConversionImpact {
         if format.ext == "txt", format.kind == .document {
             changes.append("仅保留文字，不保留排版与图片")
         }
+        if format.kind == .document, FormatCatalog.pageImageExts.contains(format.ext) {
+            changes.append("每页生成一张图片；多页 PDF 的图片放在一个新文件夹里")
+        }
         if format.ext == "pdf", format.kind == .image {
             changes.append("每张图片单独生成单页 PDF")
         }
         if changes.isEmpty {
-            return format.ext == "jpg" ? "有损，适合照片" : format.hint
+            return format.ext == "jpg" && format.kind == .image ? "有损，适合照片" : format.hint
         }
         return changes.joined(separator: "；")
     }

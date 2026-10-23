@@ -354,7 +354,7 @@ struct ContentView: View {
                     formatSelector
                     HStack(spacing: 12) {
                         if let format = model.selectedFormat {
-                            Text(format.ext == "jpg" ? "有损，适合照片" : format.hint)
+                            Text(format.ext == "jpg" && format.kind == .image ? "有损，适合照片" : format.hint)
                                 .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
                                 .lineLimit(1).layoutPriority(-1).help(format.hint)
                         }
@@ -378,7 +378,7 @@ struct ContentView: View {
             }
             if let format = model.selectedFormat {
                 let impact = ConversionImpact.text(format: format, sources: impactSources)
-                let generic = format.ext == "jpg" ? "有损，适合照片" : format.hint
+                let generic = format.ext == "jpg" && format.kind == .image ? "有损，适合照片" : format.hint
                 if impact != generic {
                     Label(impact, systemImage: "info.circle")
                         .font(.system(size: Palette.TypeSize.caption)).foregroundStyle(Palette.textSecondary)
@@ -403,10 +403,10 @@ struct ContentView: View {
         .padding(.horizontal, 20).padding(.vertical, 12).background(Palette.canvas)
     }
 
-    /// 格式不多（≤ 10 个，窄窗口会折成两行）时直接排成胶囊，一眼看全；格式再多才退回下拉框。
+    /// 格式不多（≤ 12 个，窄窗口会折成两行）时直接排成胶囊，一眼看全；格式再多才退回下拉框。
     @ViewBuilder
     private var formatSelector: some View {
-        if model.availableFormats.count <= 10 {
+        if model.availableFormats.count <= 12 {
             FormatChips(formats: model.availableFormats, selection: $model.selectedFormat)
                 .focusable().focused($focusedControl, equals: .outputFormat)
         } else {

@@ -107,7 +107,7 @@ private actor FileMetadataCache {
 
 enum FileMetadataReader {
     private static let audioExtensions: Set<String> = [
-        "mp3", "m4a", "m4b", "aac", "flac", "wav", "aiff", "aif", "alac", "ogg", "opus", "wma"
+        "mp3", "m4a", "m4b", "aac", "flac", "wav", "aiff", "aif", "aifc", "alac", "ogg", "opus", "wma", "caf", "amr", "ape", "mka"
     ]
 
     /// 文件属性、ImageIO/PDF 与 ffprobe 都在后台任务中执行，调用方可直接从主线程 await。
