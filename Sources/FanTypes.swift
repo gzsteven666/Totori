@@ -7,6 +7,7 @@ enum FanTheme: String, CaseIterable, Identifiable {
     case haze   // 晨雾蓝 · 30% 天蓝 + 70% 透明
     case aqua   // 玻璃蓝
     case mint   // 玻璃绿
+    case beach  // 冥滩 · 焦油黑 + 开罗尔金，固定深色，带 BT 手印
 
     var id: String { rawValue }
 
@@ -16,6 +17,7 @@ enum FanTheme: String, CaseIterable, Identifiable {
         case .haze: return "晨雾蓝"
         case .aqua: return "玻璃蓝"
         case .mint: return "玻璃绿"
+        case .beach: return "冥滩"
         }
     }
 
@@ -25,6 +27,7 @@ enum FanTheme: String, CaseIterable, Identifiable {
         case .haze: return Color(red: 0.38, green: 0.74, blue: 0.95)
         case .aqua: return Color(red: 0.24, green: 0.60, blue: 1.00)
         case .mint: return Color(red: 0.16, green: 0.86, blue: 0.62)
+        case .beach: return Palette.brand
         }
     }
 
@@ -34,6 +37,7 @@ enum FanTheme: String, CaseIterable, Identifiable {
         case .haze: return Color(red: 0.90, green: 0.98, blue: 1.00)
         case .aqua: return Color(red: 0.55, green: 0.86, blue: 1.00)
         case .mint: return Color(red: 0.58, green: 0.98, blue: 0.72)
+        case .beach: return Palette.brandHover
         }
     }
 
@@ -44,6 +48,7 @@ enum FanTheme: String, CaseIterable, Identifiable {
         case .haze: return Color(red: 0.85, green: 0.96, blue: 1.00)
         case .aqua: return Color(red: 0.55, green: 0.86, blue: 1.00)
         case .mint: return Color(red: 0.58, green: 0.98, blue: 0.72)
+        case .beach: return Palette.glassTop
         }
     }
 
@@ -53,6 +58,7 @@ enum FanTheme: String, CaseIterable, Identifiable {
         case .haze: return Color(red: 0.56, green: 0.80, blue: 0.88)
         case .aqua: return Color(red: 0.24, green: 0.60, blue: 1.00)
         case .mint: return Color(red: 0.16, green: 0.86, blue: 0.62)
+        case .beach: return Palette.glassBottom
         }
     }
 
@@ -63,6 +69,7 @@ enum FanTheme: String, CaseIterable, Identifiable {
         case .haze: return Color(red: 0.06, green: 0.26, blue: 0.40)
         case .aqua: return Color(red: 0.05, green: 0.18, blue: 0.34)
         case .mint: return Color(red: 0.04, green: 0.26, blue: 0.20)
+        case .beach: return Palette.textPrimary
         }
     }
 
@@ -70,6 +77,9 @@ enum FanTheme: String, CaseIterable, Identifiable {
     var hotTop: Color { Palette.brand }
     var hotBottom: Color { Palette.brandHover }
     var hotInk: Color { Palette.onAccent }
+
+    /// 冥滩主题固定深色外观，并显示 BT 手印
+    var isBeach: Bool { self == .beach }
 
     var gradient: LinearGradient {
         LinearGradient(

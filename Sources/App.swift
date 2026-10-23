@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             options: [.userInitiated],
             reason: "拖拽格式轮需要稳定的动画帧"
         )
+        ThemeAppearance.start()
         FanController.shared.prepare()
         ProgressHUD.shared.attach()
         FanController.shared.startMonitoring()

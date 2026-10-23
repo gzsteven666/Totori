@@ -1,9 +1,33 @@
 import AppKit
+import SwiftUI
+import ImageIO
 
 /// 验收探针和开发期渲染入口（`--probe-*`、`--dump-*`、`--render-fan`、`--show-fan`、`--simulate-drag`）。
 /// 只在带 `TOTORI_CHECKS` 的构建里编译；正式包里没有这些代码。
 /// 构建方式见 README：`TOTORI_CHECKS=1 ./build.sh`。
 func runChecksIfRequested() {
+    // `--render-handprints <输出.png>`：把 6 个不同种子的 BT 手印放大画在深色底上，检查形状
+    if let index = CommandLine.arguments.firstIndex(of: "--render-handprints"), CommandLine.arguments.count > index + 1 {
+        let path = CommandLine.arguments[index + 1]
+        let ok: Bool = MainActor.assumeIsolated {
+            let grid = HStack(spacing: 30) {
+                ForEach(1...6, id: \.self) { seed in
+                    BTHandprint(seed: UInt64(seed) &+ 11).frame(width: 124, height: 200)
+                }
+            }
+            .padding(30)
+            .background(Color(red: 0.25, green: 0.26, blue: 0.28))
+            let renderer = ImageRenderer(content: grid)
+            renderer.scale = 2
+            guard let image = renderer.cgImage,
+                  let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: path) as CFURL, "public.png" as CFString, 1, nil)
+            else { return false }
+            CGImageDestinationAddImage(dest, image, nil)
+            return CGImageDestinationFinalize(dest)
+        }
+        exit(ok ? 0 : 1)
+    }
+
     // `--convert <文件> <输出扩展名> <输出目录>`：开发时用真实文件试一次转换，走和主窗口相同的路径
     if let index = CommandLine.arguments.firstIndex(of: "--convert"), CommandLine.arguments.count > index + 3 {
         let source = URL(fileURLWithPath: CommandLine.arguments[index + 1])

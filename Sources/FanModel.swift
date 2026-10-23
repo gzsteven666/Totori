@@ -142,6 +142,8 @@ final class FanModel: ObservableObject {
         return item.hint
     }
     @Published var appeared = false
+    /// 自检渲染用：固定冥滩手印的已逝时间（离屏渲染没有时间流逝）
+    var debugPrintsElapsed: Double?
     /// 花瓣依次张开的进度（0→1），由定时器驱动，不依赖 SwiftUI 隐式动画
     @Published var bloom: Double = 1
 

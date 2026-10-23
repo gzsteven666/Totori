@@ -16,6 +16,8 @@ struct ContentView: View {
     @State private var dragShortcutHint = KeyMap.conversionDragHint
     @State private var impactSources: [FileMetadataSnapshot] = []
     @AppStorage("totori.convertQuality") private var convertQuality = ""
+    @AppStorage("totori.theme") private var themeRaw: String = FanTheme.forest.rawValue
+    private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
 
     private var defaultQualityTitle: String {
         CompressionPreset(rawValue: convertQuality)?.title ?? "标准"
@@ -129,12 +131,23 @@ struct ContentView: View {
     private var emptyState: some View {
         VStack(spacing: 20) {
             Spacer(minLength: 12)
-            JellyOrb(diameter: 104, active: isTargeted) {
-                if let paw = PawAssets.open {
-                    Image(nsImage: paw).resizable().scaledToFit()
+            Group {
+                if theme.isBeach {
+                    // 冥滩：不用凝胶球和小爪子，只留一个 BT 手印；拖文件进来时手印微微放大、变亮
+                    BTHandprint(seed: 23)
+                        .frame(width: 74, height: 118)
+                        .scaleEffect(isTargeted && !Palette.reduceMotion ? 1.06 : 1)
+                        .brightness(isTargeted ? 0.08 : 0)
+                        .animation(.easeOut(duration: 0.18), value: isTargeted)
                 } else {
-                    Image(systemName: "tray.and.arrow.down").font(.system(size: 30, weight: .light))
-                        .foregroundStyle(Palette.brand)
+                    JellyOrb(diameter: 104, active: isTargeted) {
+                        if let paw = PawAssets.open {
+                            Image(nsImage: paw).resizable().scaledToFit()
+                        } else {
+                            Image(systemName: "tray.and.arrow.down").font(.system(size: 30, weight: .light))
+                                .foregroundStyle(Palette.brand)
+                        }
+                    }
                 }
             }.accessibilityHidden(true)
             VStack(spacing: 9) {
@@ -294,7 +307,12 @@ struct ContentView: View {
             .font(.system(size: Palette.TypeSize.micro)).foregroundStyle(Palette.textSecondary)
             .padding(.horizontal, 20).padding(.vertical, 7)
         }
-        .frame(maxHeight: .infinity).background(Palette.surface)
+        .frame(maxHeight: .infinity)
+        .background(
+            // 冥滩：转换期间文件列表底下陆续浮现 BT 手印，完成后消散
+            HandprintField(active: theme.isBeach && model.isConverting, size: 40, maxOpacity: 0.32)
+                .background(Palette.surface)
+        )
         }
     }
 

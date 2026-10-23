@@ -57,6 +57,19 @@ extension FanTheme {
                 brandSoft: (0xDAE6FA, 0x233B63), focus: (0x1F5FBF, 0xB3D2FF),
                 onAccent: (0xFFFFFF, 0x0E2447),
                 glassTop: (0xDCEBFF, 0x2A4268), glassBottom: (0xA3C4F2, 0x192640))
+        case .beach:
+            // 冥滩：焦油黑底、骨白文字、低饱和的开罗尔金点缀。浅色外观也用同一套深色，App 会被切到深色外观
+            let colors = ThemeColors(
+                canvas: (0x0D0E10, 0x0D0E10), surface: (0x15171A, 0x15171A),
+                surfaceSecondary: (0x1D2024, 0x1D2024),
+                textPrimary: (0xECE9E2, 0xECE9E2), textSecondary: (0xA19E96, 0xA19E96),
+                line: (0x34383E, 0x34383E),
+                // 金色压低饱和度，接近游戏里偏旧、偏暗的开罗尔金，只做点缀
+                brand: (0xC2A066, 0xC2A066), brandHover: (0xD8BE8C, 0xD8BE8C),
+                brandSoft: (0x29251C, 0x29251C), focus: (0xD8BE8C, 0xD8BE8C),
+                onAccent: (0x111214, 0x111214),
+                glassTop: (0x2A2C30, 0x2A2C30), glassBottom: (0x101113, 0x101113))
+            return colors
         case .mint:
             return ThemeColors(
                 canvas: (0xEEF7F3, 0x12211C), surface: (0xF9FDFB, 0x1C3029),
@@ -246,4 +259,26 @@ struct FollowsTheme: ViewModifier {
 
 extension View {
     func followsTheme() -> some View { modifier(FollowsTheme()) }
+}
+
+
+/// 冥滩主题固定用深色外观：它的色板只有深色一套，浅色外观下系统控件（下拉框、复选框）会是白底，和焦油黑界面不搭。
+/// 其他主题恢复跟随系统。
+@MainActor
+enum ThemeAppearance {
+    private static var observer: NSObjectProtocol?
+
+    static func start() {
+        apply()
+        observer = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification,
+                                                          object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { apply() }
+        }
+    }
+
+    static func apply() {
+        let wanted: NSAppearance? = FanTheme.current.isBeach ? NSAppearance(named: .darkAqua) : nil
+        guard NSApp.appearance?.name != wanted?.name else { return }
+        NSApp.appearance = wanted
+    }
 }

@@ -5,11 +5,15 @@ import SwiftUI
 struct FanView: View {
     @ObservedObject var model: FanModel
     @AppStorage("totori.theme") private var themeRaw: String = FanTheme.forest.rawValue
+    @Environment(\.colorScheme) private var colorScheme
 
     private var theme: FanTheme { FanTheme(rawValue: themeRaw) ?? .forest }
+    /// 冥滩主题：本次轮盘出现的时刻，手印按它推算逼近的进度
+    @State private var printsStart = Date()
 
     var body: some View {
         ZStack {
+            if theme.isBeach { approachingPrints }
             ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
                 let isHot = model.highlighted == index
                 let hasHot = model.highlighted != nil
@@ -32,7 +36,7 @@ struct FanView: View {
             }
             if let point = model.pointerPoint, model.pointerAngle != nil {
                 draggedChip(at: point)
-                if PawAssets.open != nil { pawView(at: point) }
+                if theme.isBeach { btHand(at: point) } else if PawAssets.open != nil { pawView(at: point) }
             }
             if let index = model.highlighted, model.items.indices.contains(index) {
                 selectionCaption(model.items[index])
@@ -103,6 +107,67 @@ struct FanView: View {
         }
         .position(point)
         .allowsHitTesting(false)
+    }
+
+    // MARK: 冥滩：BT 手印
+
+    /// 轮盘出现后，BT 手印一个接一个从外围浮现，每个都比上一个更靠近中心，像看不见的 BT 正在逼近。
+    /// 最多同时留 9 个，更早的慢慢消散。纯按时间推算，不保存状态。
+    private var approachingPrints: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: Palette.reduceMotion || !model.appeared)) { context in
+            let interval = 0.32
+            let elapsed = model.debugPrintsElapsed
+                ?? (Palette.reduceMotion ? interval * 6 : max(0, context.date.timeIntervalSince(printsStart)))
+            let newest = Int(elapsed / interval)
+            ZStack {
+                ForEach(max(0, newest - 9)...newest, id: \.self) { index in
+                    approachingPrint(index, age: elapsed - Double(index) * interval, newest: newest)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .onChange(of: model.appeared) { appeared in if appeared { printsStart = Date() } }
+    }
+
+    private func approachingPrint(_ index: Int, age: Double, newest: Int) -> some View {
+        var random = SplitMix64(seed: UInt64(index) &* 0x9E37_79B9 &+ 3)
+        let angle = Double(random.unit()) * 2 * .pi
+        let outer = model.canvas / 2 - 24
+        let inner = model.radius * 0.5
+        // 每个新手印向中心推进一步，推到内圈后就在内圈附近徘徊
+        let radius = max(inner, outer - CGFloat(index) * (outer - inner) / 12) + (random.unit() - 0.5) * 16
+        let position = CGPoint(x: model.center.x + CGFloat(cos(angle)) * radius,
+                               y: model.center.y + CGFloat(sin(angle)) * radius)
+        let rank = newest - index
+        let fadeIn = min(1, max(0, age / 0.2))
+        let fadeOld = rank > 6 ? max(0, 1 - Double(rank - 6) / 3) : 1
+        let size: CGFloat = 52 + random.unit() * 14
+        return BTHandprint(seed: UInt64(index) &+ 11)
+            .frame(width: size * 0.62, height: size)
+            // 手印基本直立、只轻微歪斜：像按在竖着的玻璃上，滴痕始终往下淌
+            .rotationEffect(.degrees(Double(random.unit() - 0.5) * 30))
+            .scaleEffect(0.88 + 0.12 * fadeIn)
+            .opacity(0.85 * fadeIn * fadeOld)
+            .position(position)
+    }
+
+    /// 替换龙猫小手：一只 BT 手印跟着指针，选中花瓣时“按”下去
+    private func btHand(at point: CGPoint) -> some View {
+        let angle = model.pointerAngle ?? -Double.pi / 2
+        let dir = CGVector(dx: cos(angle), dy: sin(angle))
+        let base = CGPoint(x: point.x - dir.dx * 34, y: point.y - dir.dy * 34)
+        let phase = model.pawPhase
+        let press: CGFloat = Palette.reduceMotion ? 0 : (phase == .grasp ? 6 : (phase == .pull ? 4 : -3))
+        return BTHandprint(seed: 7)
+            .frame(width: 38, height: 60)
+            .rotationEffect(.radians(angle + .pi / 2))
+            .scaleEffect(phase == .grasp ? 0.86 : (phase == .pull ? 0.92 : 1))
+            .offset(x: dir.dx * press, y: dir.dy * press)
+            .position(base)
+            .opacity(phase == .idle ? 0 : 0.95)
+            .allowsHitTesting(false)
+            .animation(Palette.reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.22, dampingFraction: 0.6),
+                       value: phase)
     }
 
     /// 唯一一只轻量小手：从环内伸向卡片，爪尖压在卡片边缘
@@ -239,27 +304,99 @@ struct FanView: View {
             // 拷贝路径只显示文字，避免本地化文字图标被误认为路径内容。
             if item != .action(.copyPath) {
                 Image(systemName: item.symbol)
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(hot ? theme.hotInk : Palette.brand)
+                    .font(.system(size: 11.5, weight: theme.isBeach ? .light : .medium))
+                    // 冥滩：图标用灰白细线，不再用金色；金色只留给少数强调
+                    .foregroundStyle(theme.isBeach ? Color.white.opacity(hot ? 0.9 : 0.5)
+                                     : (hot ? theme.hotInk : Palette.brand))
                     .frame(width: 13)
             }
             Text(item.title)
-                .font(.system(size: 14, weight: .semibold))
+                // 冥滩：细一点、字距拉开，接近游戏界面里克制的排版
+                .font(.system(size: 14, weight: theme.isBeach ? .regular : .semibold))
+                .tracking(theme.isBeach ? 0.8 : 0)
                 // 未选中用深森林字；选中后底色换成实心强调色，字色跟着换成强调色上的前景
-                .foregroundStyle(hot ? theme.hotInk : Palette.textPrimary)
+                .foregroundStyle(theme.isBeach ? Color.white.opacity(hot ? 0.97 : 0.72)
+                                 : (hot ? theme.hotInk : Palette.textPrimary))
                 .lineLimit(1)
-                .minimumScaleFactor(0.9)
+                // “封面JPG”这类较长的名字在小花瓣里缩一点字号，不截断
+                .minimumScaleFactor(0.65)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 9)
         .frame(width: model.petalWidth, height: model.petalHeight)
         .background(
-            // 凝胶花瓣：半透明胶体里悬着细小气泡；选中时胶体换成更浓的强调色
-            GelSurface(shape: Capsule(),
-                       tint: hot ? theme.hotTop : theme.glassBottom,
-                       edge: hot ? theme.hotBottom : theme.tint,
-                       seed: Self.gelSeed(item.title),
-                       density: hot ? 1.25 : 1)
+            // 材质在拖动中不变，预先画成位图缓存，否则 drawingGroup 每帧都要重画几十个气泡或曲线
+            Group {
+                if theme.isBeach {
+                    // 冥滩：一坨不规则的焦油，底部往下滴；滴痕画在花瓣下方，不占文字位置
+                    let drip = model.petalHeight * 0.62
+                    GelPetalCache.view(theme: theme, title: item.title, hot: hot, dark: colorScheme == .dark,
+                                       size: CGSize(width: model.petalWidth, height: model.petalHeight + drip)) {
+                        TarPetal(seed: Self.gelSeed(item.title), hot: hot,
+                                 bodyRatio: model.petalHeight / (model.petalHeight + drip))
+                    }
+                    .offset(y: drip / 2)
+                } else {
+                    // 凝胶花瓣：半透明胶体里悬着细小气泡；选中时胶体换成更浓的强调色
+                    GelPetalCache.view(theme: theme, title: item.title, hot: hot, dark: colorScheme == .dark,
+                                       size: CGSize(width: model.petalWidth, height: model.petalHeight)) {
+                        GelSurface(shape: Capsule(),
+                                   tint: hot ? theme.hotTop : theme.glassBottom,
+                                   edge: hot ? theme.hotBottom : theme.tint,
+                                   seed: Self.gelSeed(item.title),
+                                   density: hot ? 1.25 : 1)
+                    }
+                }
+            }
         )
+        // 冥滩：选中的花瓣上留下一个 BT 手印，像被按住
+        .overlay(alignment: .trailing) {
+            if hot && theme.isBeach {
+                BTHandprint(seed: Self.gelSeed(item.title))
+                    .frame(width: model.petalHeight * 0.48, height: model.petalHeight * 0.78)
+                    .rotationEffect(.degrees(-14))
+                    .opacity(0.75)
+                    .padding(.trailing, 8)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
+/// 凝胶花瓣的位图缓存：按主题、标题（决定气泡位置）、尺寸、是否选中和深浅外观区分。
+/// 四周留出阴影的空间一起画进去，显示时再把这圈边距抵消掉。
+@MainActor
+enum GelPetalCache {
+    static let scale: CGFloat = 2
+    private static let margin: CGFloat = 16
+    private static var images: [String: CGImage] = [:]
+
+    @ViewBuilder
+    static func view<Content: View>(theme: FanTheme, title: String, hot: Bool, dark: Bool, size: CGSize,
+                                    @ViewBuilder content: () -> Content) -> some View {
+        let key = "\(theme.rawValue)|\(title)|\(Int(size.width))x\(Int(size.height))|\(hot)|\(dark)"
+        if let image = images[key] ?? render(key: key, dark: dark, size: size, content: content()) {
+            Image(decorative: image, scale: scale)
+                .resizable()
+                .frame(width: size.width + margin * 2, height: size.height + margin * 2)
+                .padding(-margin)
+        } else {
+            content()
+        }
+    }
+
+    private static func render<Content: View>(key: String, dark: Bool, size: CGSize, content: Content) -> CGImage? {
+        let renderer = ImageRenderer(content: content
+            .frame(width: size.width, height: size.height)
+            .padding(margin)
+            .environment(\.colorScheme, dark ? .dark : .light))
+        renderer.scale = scale
+        var image: CGImage?
+        // 主题色是动态颜色，按对应的深浅外观取值
+        NSAppearance(named: dark ? .darkAqua : .aqua)?.performAsCurrentDrawingAppearance {
+            image = renderer.cgImage
+        }
+        if let image { images[key] = image }
+        return image
     }
 }

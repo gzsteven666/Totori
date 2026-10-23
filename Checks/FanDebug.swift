@@ -499,8 +499,8 @@ enum MainWindowRender {
             hosting.frame = NSRect(origin: .zero, size: size)
             let window = NSWindow(contentRect: hosting.frame, styleMask: [.borderless], backing: .buffered, defer: false)
             window.contentView = hosting
-            // 用 `-AppleInterfaceStyle Dark` 参数时离屏窗口不会自动跟随，手动指定
-            if UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark" {
+            // 用 `-AppleInterfaceStyle Dark` 参数时离屏窗口不会自动跟随，手动指定；冥滩主题在 App 里固定深色
+            if UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark" || FanTheme.current.isBeach {
                 window.appearance = NSAppearance(named: .darkAqua)
             }
             window.orderBack(nil)
@@ -879,10 +879,11 @@ enum FanRender {
             model.fileIcon = NSWorkspace.shared.icon(forFile: NSTemporaryDirectory())
             model.fileLabel = "HEIC"
             model.pawPhase = .grasp  // 静态展示"抓住"这一帧
+            model.debugPrintsElapsed = 2.6   // 冥滩：展示手印已经逼近了一段时间的样子
 
             let renderer = ImageRenderer(content:
                 FanView(model: model)
-                    .frame(width: FanModel.panelSize, height: FanModel.panelSize)
+                    .frame(width: model.canvas, height: model.canvas)
                     .background(Color(white: 0.16))
             )
             renderer.scale = 2
