@@ -27,11 +27,14 @@ Totori 是一个常驻菜单栏的 macOS 本地文件转换工具。森林绿、
 ## 安装到另一台 Mac
 
 1. 打开 [Releases](https://github.com/gzsteven666/Totori/releases/latest)。
-2. 下载 **`Totori-0.3.9-macOS-arm64.zip`**。GitHub 自动生成的“Source code”是源码，不是安装包。
-3. 解压，将 **Totori.app** 拖到“应用程序”，再打开。
-4. 首次使用按应用提示开启辅助功能权限；使用读取访达选中项的功能时，允许对访达的自动化访问。
+2. 推荐下载 **`Totori-0.3.9-macOS-arm64.dmg`**，双击打开安装镜像。
+3. 将窗口左侧的 **Totori.app** 拖到右侧 **Applications（应用程序）**，等待复制完成，再从“应用程序”启动 Totori 并推出安装磁盘。
 
-支持 **M 系列 Mac（arm64），macOS 13 或更高版本**。完整包已内置 FFmpeg、ffprobe、cwebp 和 LibreOffice，无需安装 Homebrew、Python、Java 或另一个 LibreOffice。解压后的体积主要来自文档转换引擎。
+也提供 ZIP 版，解压后把 App 拖入“应用程序”。GitHub 自动生成的“Source code”是源码，不是安装包。
+
+首次使用按应用提示开启辅助功能权限；使用读取访达选中项的功能时，允许对访达的自动化访问。
+
+支持 **M 系列 Mac（arm64），macOS 13 或更高版本**。完整包已内置 FFmpeg、ffprobe、cwebp 和 LibreOffice，无需安装 Homebrew、Python、Java 或另一个 LibreOffice。App 的体积主要来自文档转换引擎。
 
 Totori 使用本地签名，**尚未经过 Apple Developer ID 签名及公证**。若 macOS 阻止首次打开，确认来自本仓库后，在“系统设置 → 隐私与安全性”中使用“仍要打开”；不要关闭系统安全保护。公司管理策略禁止时需由公司管理员处理。原始 LibreOffice 子包保留 The Document Foundation 签名。
 
@@ -75,6 +78,14 @@ Totori 使用本地签名，**尚未经过 Apple Developer ID 签名及公证**�
 ```sh
 python3 scripts/build-runtime.py --work-dir "$PWD/work/portable"
 python3 scripts/package-release.py --runtime-work-dir "$PWD/work/portable" --output-dir "$PWD/dist"
+```
+
+制作传统拖拽安装镜像时，可使用已签名的 App（包括从正式 ZIP 解压的 App），无需重编译程序：
+
+```sh
+python3 -m venv work/dmg-venv
+work/dmg-venv/bin/python -m pip install -r scripts/dmg-requirements.txt
+work/dmg-venv/bin/python scripts/build-dmg.py --app /path/to/Totori.app --output-dir dist
 ```
 
 固定版本、来源与校验值见 `scripts/runtime-lock.json`、`scripts/libreoffice-lock.json`。许可证与对应源码随 Releases 提供。详见 [第三方说明](THIRD_PARTY_NOTICES.md)。仓库不包含个人测试文件、运行记录、签名证书或 Homebrew 安装目录。
