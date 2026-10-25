@@ -84,15 +84,11 @@ struct ContentView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Group {
-                if let icon = NSImage(named: "AppIcon") {
-                    Image(nsImage: icon).resizable().scaledToFit()
-                } else {
-                    Image(systemName: "leaf.fill").resizable().scaledToFit().foregroundStyle(Palette.brand)
-                }
-            }
-            .frame(width: 36, height: 36)
-            .accessibilityHidden(true)
+            // 直接画图标，跟随当前主题配色（图标四周按 macOS 规格留了白，所以框比原来大一点）
+            AppIconArt(theme: theme)
+                .frame(width: 44, height: 44)
+                .padding(-4)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Totori").font(.system(size: Palette.TypeSize.title, weight: .semibold))
                     .foregroundStyle(Palette.textPrimary)

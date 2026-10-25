@@ -262,11 +262,12 @@ extension View {
 }
 
 
-/// 冥滩主题固定用深色外观：它的色板只有深色一套，浅色外观下系统控件（下拉框、复选框）会是白底，和焦油黑界面不搭。
+/// 主题切换时的全局处理：运行时图标换成对应配色；冥滩主题固定用深色外观：它的色板只有深色一套，浅色外观下系统控件（下拉框、复选框）会是白底，和焦油黑界面不搭。
 /// 其他主题恢复跟随系统。
 @MainActor
 enum ThemeAppearance {
     private static var observer: NSObjectProtocol?
+    private static var lastTheme: FanTheme?
 
     static func start() {
         apply()
@@ -277,6 +278,10 @@ enum ThemeAppearance {
     }
 
     static func apply() {
+        if lastTheme != FanTheme.current {
+            lastTheme = FanTheme.current
+            ThemedAppIcon.apply(FanTheme.current)
+        }
         let wanted: NSAppearance? = FanTheme.current.isBeach ? NSAppearance(named: .darkAqua) : nil
         guard NSApp.appearance?.name != wanted?.name else { return }
         NSApp.appearance = wanted

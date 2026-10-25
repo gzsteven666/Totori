@@ -6,6 +6,46 @@ import ImageIO
 /// 只在带 `TOTORI_CHECKS` 的构建里编译；正式包里没有这些代码。
 /// 构建方式见 README：`TOTORI_CHECKS=1 ./build.sh`。
 func runChecksIfRequested() {
+    // `--render-app-icon <目录>`：按 macOS 图标规格输出 AppIcon.iconset（森林绿），
+    // 再用 `iconutil -c icns` 打包；同时输出 themes.png，五个主题的图标并排预览
+    if let index = CommandLine.arguments.firstIndex(of: "--render-app-icon"), CommandLine.arguments.count > index + 1 {
+        let directory = URL(fileURLWithPath: CommandLine.arguments[index + 1])
+        let ok: Bool = MainActor.assumeIsolated {
+            @MainActor func write(_ view: some View, pixels: Int, to url: URL) -> Bool {
+                let renderer = ImageRenderer(content: view.frame(width: CGFloat(pixels), height: CGFloat(pixels)))
+                renderer.scale = 1
+                guard let image = renderer.cgImage,
+                      let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.png" as CFString, 1, nil)
+                else { return false }
+                CGImageDestinationAddImage(dest, image, nil)
+                return CGImageDestinationFinalize(dest)
+            }
+            let set = directory.appendingPathComponent("AppIcon.iconset")
+            try? FileManager.default.createDirectory(at: set, withIntermediateDirectories: true)
+            var ok = true
+            for (name, pixels) in [("16x16", 16), ("16x16@2x", 32), ("32x32", 32), ("32x32@2x", 64),
+                                   ("128x128", 128), ("128x128@2x", 256), ("256x256", 256),
+                                   ("256x256@2x", 512), ("512x512", 512), ("512x512@2x", 1024)] {
+                // 32 像素及以下用简化版：小尺寸只留卡片和爪子
+                let art = AppIconArt(theme: .forest, simplified: pixels <= 32)
+                ok = ok && write(art, pixels: pixels, to: set.appendingPathComponent("icon_\(name).png"))
+            }
+            let sheet = HStack(spacing: 24) {
+                ForEach(FanTheme.allCases) { theme in AppIconArt(theme: theme).frame(width: 256, height: 256) }
+            }.padding(24).background(Color(white: 0.9))
+            let renderer = ImageRenderer(content: sheet)
+            renderer.scale = 2
+            if let image = renderer.cgImage,
+               let dest = CGImageDestinationCreateWithURL(directory.appendingPathComponent("themes.png") as CFURL,
+                                                          "public.png" as CFString, 1, nil) {
+                CGImageDestinationAddImage(dest, image, nil)
+                ok = ok && CGImageDestinationFinalize(dest)
+            }
+            return ok
+        }
+        exit(ok ? 0 : 1)
+    }
+
     // `--render-handprints <输出.png>`：把 6 个不同种子的 BT 手印放大画在深色底上，检查形状
     if let index = CommandLine.arguments.firstIndex(of: "--render-handprints"), CommandLine.arguments.count > index + 1 {
         let path = CommandLine.arguments[index + 1]
