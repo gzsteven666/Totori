@@ -716,6 +716,11 @@ enum FanSimulation {
             return FanModifiers(shift: key == .shift, option: key == .option,
                                 command: key == .command, control: key == .control)
         }
+        /// 鼠标未按下的一次 tick，随后来源应用开始新的文件拖动（拖放粘贴板计数变化）
+        func idle(_ modifiers: FanModifiers) {
+            c.tick(buttonDown: false, modifiers: modifiers, at: base)
+            SimulatedDrag.begin([sample])
+        }
         let toolsKey = KeyMap.primaryKey(for: .tools).symbol
         let convertKey = KeyMap.primaryKey(for: .convert).symbol
 
@@ -732,7 +737,7 @@ enum FanSimulation {
         print("== 状态机自检 ==")
 
         // 1. 先按键，再按下鼠标并移动
-        c.tick(buttonDown: false, modifiers: mods(.tools), at: base)
+        idle(mods(.tools))
         c.tick(buttonDown: true, modifiers: mods(.tools), at: base)
         c.tick(buttonDown: true, modifiers: mods(.tools), at: NSPoint(x: base.x + 20, y: base.y + 12))
         expect(c.debugVisible, "\(toolsKey) + 拖动 → 出轮")
@@ -755,11 +760,11 @@ enum FanSimulation {
         expect(c.debugMode == .actions, "再切到 \(KeyMap.primaryKey(for: .actions).symbol) →「文件动作」")
 
         // 3. 松手收起
-        c.tick(buttonDown: false, modifiers: FanModifiers(), at: base)
+        idle(FanModifiers())
         expect(!c.debugVisible, "松手 → 收起")
 
         // 4. 键按着但没拖：不该出轮
-        c.tick(buttonDown: false, modifiers: FanModifiers(shift: true), at: base)
+        idle(FanModifiers(shift: true))
         c.tick(buttonDown: true, modifiers: FanModifiers(shift: true), at: base)
         expect(!c.debugVisible, "只按键不移动 → 不出轮")
 
@@ -768,7 +773,7 @@ enum FanSimulation {
         c.tick(buttonDown: true, modifiers: mods(.tools), at: NSPoint(x: base.x + 30, y: base.y))
         expect(c.debugVisible, "重新出轮")
         c.debugMarkDropped()                     // 相当于这次是拖放完成的
-        c.tick(buttonDown: false, modifiers: FanModifiers(), at: base)
+        idle(FanModifiers())
         expect(!c.debugVisible, "拖放完成后再松手 → 仍然收起（回归）")
 
         // 7. 拖到很远：环不动，仍然按方向选中
@@ -790,7 +795,7 @@ enum FanSimulation {
             c.tick(buttonDown: true, modifiers: mods(.tools), at: center)
             expect(c.debugHighlighted == nil, "回到中心 → 无选中")
         }
-        c.tick(buttonDown: false, modifiers: FanModifiers(), at: base)
+        idle(FanModifiers())
         expect(!c.debugVisible, "中心松手 → 取消并收起")
 
         // 9. 拖放事件丢失时的兜底：松手仍然要执行
@@ -803,7 +808,7 @@ enum FanSimulation {
         }
         expect(c.debugHighlighted != nil, "悬停选中花瓣")
         let before = c.debugApplyCount
-        c.tick(buttonDown: false, modifiers: FanModifiers(), at: base)
+        idle(FanModifiers())
         expect(c.debugApplyCount == before + 1, "没有收到 drop 也能执行（兜底）")
         c.debugSuppressActions = false
 

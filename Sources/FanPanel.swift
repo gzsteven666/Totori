@@ -17,6 +17,8 @@ final class FanController {
     /// Esc 取消后，本次按住不再允许重新展开；必须等鼠标抬起
     private var suppressUntilMouseUp = false
     private var dragAnchor: NSPoint?
+    /// 鼠标未按下时最近一次看到的拖放粘贴板计数，用来区分「新的文件拖动」和残留的旧内容
+    private var idleDragChangeCount = NSPasteboard(name: .drag).changeCount
     private var activeMode: FanMode = .convert
     private var cachedURLs: [URL] = []
     /// 一次呼出期间固定格式及顺序；包括切轮与重新进入拖放区域。
@@ -85,6 +87,8 @@ final class FanController {
     private var menuPresentation = false
 
     func tick(buttonDown: Bool, modifiers: FanModifiers, at point: NSPoint) {
+        // 鼠标没按下时记下拖放粘贴板的计数；真正的文件拖动开始时来源应用会重写它，计数随之变化。
+        if !buttonDown { idleDragChangeCount = NSPasteboard(name: .drag).changeCount }
         // 取消后同一次按住里继续移动不应重开/执行
         if suppressUntilMouseUp {
             if buttonDown { return }
@@ -143,6 +147,12 @@ final class FanController {
 
         guard let anchor = dragAnchor else { return }
         guard hypot(point.x - anchor.x, point.y - anchor.y) > 6 else { return }
+        // 只有「按下鼠标之后确实开始了新的文件拖动」才呼出：
+        // 拖放粘贴板在拖动结束后不会清空，会一直留着上一次拖动的文件；
+        // 如果只看「修饰键 + 按住鼠标 + 移动」，在 Excel 里按 ⌘ 拖选多列这类普通操作也会弹出花瓣，
+        // 松手时还会对残留的旧文件执行落点上的动作（例如打包 ZIP）。
+        // 条件不满足时保持锚点，之后每次移动都会再检查一次，所以拖动稍后才开始也能呼出。
+        guard NSPasteboard(name: .drag).changeCount != idleDragChangeCount, !dragURLs().isEmpty else { return }
         present(mode: wheel, at: anchor)
     }
 
