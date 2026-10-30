@@ -30,7 +30,9 @@ jobs:
       - name: Install conversion tools
         run: |
           brew install ffmpeg webp
-          brew install --cask libreoffice
+          # cask 下载偶尔 404（新版刚发布、镜像还没同步）；重试一次，仍失败则跳过文档用例而不是让整个 CI 失败
+          brew install --cask libreoffice || { sleep 20; brew install --cask libreoffice; } \
+            || echo "::warning::LibreOffice 安装失败，本次自检会跳过文档转换用例"
       - name: Build
         env:
           TOTORI_OUTPUT_APP: ${{ runner.temp }}/Totori.app
