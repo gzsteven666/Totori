@@ -124,10 +124,11 @@ extension Engine {
 
         var result = try run(args + subtitles + tail)
         if format.ext == "prores", !result.timedOut, result.status != 0 {
-            // 没有 ProRes 硬件编码器的机器退回软件编码，参数含义相同
+            // 没有 ProRes 硬件编码器的机器退回软件编码，参数含义相同。
+            // 直接改写 args：后面去掉字幕的重试也必须用软件编码，否则在这类机器上必然再失败一次。
             try? FileManager.default.removeItem(at: destination)
-            let software = args.map { $0 == "prores_videotoolbox" ? "prores_ks" : $0 }
-            result = try run(software + subtitles + tail)
+            args = args.map { $0 == "prores_videotoolbox" ? "prores_ks" : $0 }
+            result = try run(args + subtitles + tail)
         }
         if !subtitles.isEmpty, !result.timedOut, result.status != 0 {
             // 字幕转换失败不应拖垮整个转码：去掉字幕轨重试一次，和以前的行为一致。
@@ -141,8 +142,10 @@ extension Engine {
         }
         guard result.status == 0, FileManager.default.fileExists(atPath: output.path) else {
             let tail = result.stderr.suffix(400)
-            if tail.contains("does not contain any stream") || tail.contains("matches no streams") {
-                throw ConversionError.failed("源文件没有音轨，无法提取音频")
+            // 在完整 stderr 里找：ffmpeg 会在这句之后再打印带长临时路径的错误，截取的末尾常常只剩半句
+            if result.stderr.contains("does not contain any stream") || result.stderr.contains("matches no streams") {
+                // 截封面时找不到的是画面（-map 0:V:0），不是音轨
+                throw ConversionError.failed(isCover ? "源文件没有视频画面，无法截取封面" : "源文件没有音轨，无法提取音频")
             }
             throw ConversionError.failed("转码失败：\(tail)")
         }
