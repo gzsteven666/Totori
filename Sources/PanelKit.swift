@@ -202,9 +202,10 @@ struct ProgressHUDView: View {
                     RoundedRectangle(cornerRadius: Palette.Radius.popover, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.55), lineWidth: 0.8)
                 )
-                // 冥滩：转换期间浮层里陆续浮现 BT 手印，压在文字下面
+                // 冥滩：转换期间浮层里陆续浮现 BT 手印，压在文字下面。
+                // 必须同时看 visible：浮层平时只是隐藏，进度停在 0，只看 fraction 会让 30 帧的时间轴在后台一直跑。
                 .overlay(
-                    HandprintField(active: theme.isBeach && center.fraction < 1, size: 30, maxOpacity: 0.45)
+                    HandprintField(active: theme.isBeach && center.visible && center.fraction < 1, size: 30, maxOpacity: 0.45)
                         .clipShape(RoundedRectangle(cornerRadius: Palette.Radius.popover, style: .continuous))
                 )
         )
