@@ -235,9 +235,10 @@ final class FanModel: ObservableObject {
                 }
             }
         }
-        // 兜底：若 150ms 内一帧都没走（定时器被系统节流），直接显示终态
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            guard let self, self.bloomTimer != nil, self.bloom < 0.12 else { return }
+        // 兜底：若 150ms 内一帧都没走（定时器被系统节流），直接显示终态。
+        // 只认本次的定时器：换键刷新会在 150ms 内重启时间轴，上一轮的兜底不能把新动画直接跳到终态。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self, weak timer] in
+            guard let self, let timer, self.bloomTimer === timer, self.bloom < 0.12 else { return }
             self.bloomTimer?.invalidate()
             self.bloomTimer = nil
             self.bloom = 1

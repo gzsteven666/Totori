@@ -816,6 +816,16 @@ enum FanSimulation {
         c.tick(buttonDown: true, modifiers: FanModifiers(shift: true), at: NSPoint(x: base.x + 3, y: base.y + 2))
         expect(!c.debugVisible, "位移不足 6pt → 不出轮")
 
+        // 11. 出轮后很快换键会重启花瓣时间轴；上一轮的 150ms 节流兜底不能把新动画直接跳到终态
+        let model = c.model
+        model.runBloom()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.12))
+        model.runBloom()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.045))
+        expect(model.bloom < 1, "换键重启的入场动画不被上一轮兜底跳过（进度 \(String(format: "%.2f", model.bloom))）")
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        expect(model.bloom == 1, "重启后的入场动画正常走完")
+
         print(failures.isEmpty ? "结果：状态机 OK ✅" : "结果：\(failures.count) 项失败 ❌")
         return failures.isEmpty ? 0 : 1
     }
